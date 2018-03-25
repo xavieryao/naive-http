@@ -9,26 +9,16 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-/*
- * Error handlers and wrappers. Slightly modified version of CS:APP3e example code.
- * Report specific error. In csapp error handlers terminate the app when error occurs.
- * But our program needs to be robust. So just print the error message and manually recover.
- */
+#include "../rio.h"
+#define MAXLINE 1000
 
-#include "error_handler.h"
-
-void unix_error(char *msg) { /* Unix-style error */
-    fprintf(stderr, "%s: %s\n", msg, strerror(errno));
-}
-
-void posix_error(int code, char *msg) { /* Posix-style error */
-    fprintf(stderr, "%s: %s\n", msg, strerror(code));
-}
-
-void gai_error(int code, char *msg) { /* Getaddrinfo-style error */
-    fprintf(stderr, "%s: %s\n", msg, gai_strerror(code));
-}
-
-void app_error(char *msg) { /* Application error */
-    fprintf(stderr, "%s\n", msg);
+int main(int argc, char **argv) {
+    int n;
+    rio_t rio;
+    char buf[MAXLINE];
+    
+    rio_readinitb(&rio, STDIN_FILENO);
+    while ((n = rio_readlineb(&rio, buf, MAXLINE)) != 0)
+        rio_writen(STDOUT_FILENO, buf, n);
+    return 0;
 }

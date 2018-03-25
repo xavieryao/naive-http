@@ -10,25 +10,37 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 */
 
 /*
- * Error handlers and wrappers. Slightly modified version of CS:APP3e example code.
- * Report specific error. In csapp error handlers terminate the app when error occurs.
- * But our program needs to be robust. So just print the error message and manually recover.
+ * Robust I/O. Slightly modified version of CS:APP3e example code. Used for socket read/write.
  */
 
-#include "error_handler.h"
+#ifndef NAIVE_HTTP_RIO_H
+#define NAIVE_HTTP_RIO_H
 
-void unix_error(char *msg) { /* Unix-style error */
-    fprintf(stderr, "%s: %s\n", msg, strerror(errno));
-}
+#include <unistd.h>
+/*
+ * Unbuffered read/write
+ * Only return a short count if it encounters EOF.
+ */
+ssize_t rio_readn(int fd, void *usrbuf, size_t n);
+ssize_t rio_writen(int fd, void *usrbuf, size_t n);
 
-void posix_error(int code, char *msg) { /* Posix-style error */
-    fprintf(stderr, "%s: %s\n", msg, strerror(code));
-}
+/*
+ * Buffered input functions
+ * Provide line buffer and binary buffer. Can be used interchangeably.
+ * Can not be mixed with unbuffered version.
+ */
 
-void gai_error(int code, char *msg) { /* Getaddrinfo-style error */
-    fprintf(stderr, "%s: %s\n", msg, gai_strerror(code));
-}
+#define RIO_BUFSIZE 8192
+typedef struct {
+    int rio_fd; /* Descriptor for this internal buf */
+    ssize_t rio_cnt; /* Unread bytes in internal buf */
+    char *rio_bufptr; /* Next unread byte in internal buf */
+    char rio_buf[RIO_BUFSIZE]; /* Internal buffer */
+} rio_t; /* RIO internal buffer */
 
-void app_error(char *msg) { /* Application error */
-    fprintf(stderr, "%s\n", msg);
-}
+void rio_readinitb(rio_t *rp, int fd); /* Initialize rio internal buffer */
+
+ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen); /* Buffered read, line */
+ssize_t rio_readnb(rio_t *rp, void *usrbuf, size_t n); /* Buffered read, binary */
+
+#endif //NAIVE_HTTP_RIO_H
