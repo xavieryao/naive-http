@@ -3,4 +3,4 @@ project(naive_http C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(naive_http main.c)
+add_executable(naive_http main.c error_handler.c error_handler.h)
