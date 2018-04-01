@@ -36,7 +36,7 @@ typedef struct {
     int parse_pos;
     int write_pos;
     int total_length;
-    char buf[MAXLINE];
+    char buf[MAXBUF];
     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE];
     enum {
@@ -74,6 +74,7 @@ transaction_t* find_empty_transaction_for_fd(int fd);
  * Event-based using epoll.
  */
 void handle_request(int fd, int listenfd, int efd) {
+    printf("handle request.\n");
     if (fd == listenfd) {
         accept_connection(fd, efd);
         // Accept socket
@@ -87,9 +88,13 @@ void handle_request(int fd, int listenfd, int efd) {
             break;
         }
     }
-    if (trans == NULL) return;
+    if (trans == NULL) {
+        app_error("transaction not found.");
+        return;
+    }
     switch (trans->status) {
         case S_READ_REQ_HEADER:
+            read_request_header(trans, efd);
             break;
         case S_SEND_RESP_HEADER:
             break;
@@ -100,6 +105,7 @@ void handle_request(int fd, int listenfd, int efd) {
 }
 
 void accept_connection(int fd, int efd) {
+    printf("accept connection.\n");
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
     int connfd;
@@ -142,6 +148,7 @@ void accept_connection(int fd, int efd) {
 }
 
 void read_request_header(transaction_t* trans, int efd) {
+    printf("read request header.\n");
     ssize_t count;
     while (true) {
         count = read(trans->fd, trans->buf+trans->read_pos, MAXBUF-trans->read_pos);
@@ -154,9 +161,11 @@ void read_request_header(transaction_t* trans, int efd) {
                 break;
             }
         } else if (count == 0) { /* Client closed connection */
+            printf("client closed.\n");
             cleanup_transaction(trans);
             return;
         } else {
+            printf("read %d bytes.\n", count);
             trans->read_pos += count;
         }
     }
@@ -181,14 +190,17 @@ void read_request_header(transaction_t* trans, int efd) {
         }
     }
     if (not (read_header_tail)) {
+        printf("Haven't read entire header.\n");
         return; /* haven't read the entire header */
     }
 
+    printf("read entire header.\n");
     /* parse request line and header */
     if (sscanf("%s %s %s", trans->method, trans->uri, trans->version) != 3) {
         handle_error(efd, trans, "", "400", "Bad Request", "Invalid request line");
         return;
     }
+    printf("Request line: [%s] [%s] [%s]\n", trans->method, trans->uri, trans->version);
     char* tofree, *remain, *value_s, *key_s;
     int header_len = trans->parse_pos + header_tail_len;
     tofree = remain = calloc(sizeof(char), header_len + 1);
