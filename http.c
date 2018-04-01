@@ -515,7 +515,7 @@ void init_transaction_slots() {
 transaction_t* find_empty_transaction_for_fd(int fd) {
     int i = 0;
     while (i < MAXEVENT) {
-        if (transactions[i].pid == -1) return &transactions[i];
+        if (transactions[i].fd == -1) return &transactions[i];
         i += 1;
     }
     return NULL;
