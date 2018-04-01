@@ -110,11 +110,14 @@ void accept_connection(int fd, int efd) {
         if (connfd < 0) { /* not ready */
             if (not (errno == EAGAIN || errno == EWOULDBLOCK)) {
                 unix_error("accept");
+                return;
+            } else {
+                break;
             }
-            break;
         }
     }
     transaction_t* slot = find_empty_transaction_for_fd(fd);
+
     if (set_nonblocking(connfd) == ERROR) {
         unix_error("set conn socket nonblocking");
         close(connfd);
