@@ -23,7 +23,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "error_handler.h"
 #include "rio.h"
 
-typedef enum {S_READ_REQ_HEADER, S_SEND_RESP_HEADER, S_SEND_RESP} trans_status_e;
+typedef enum {S_INVALID, S_READ_REQ_HEADER, S_SEND_RESP_HEADER, S_SEND_RESP_BODY} trans_status_e;
 
 typedef struct {
     int fd;
@@ -32,42 +32,48 @@ typedef struct {
     int read_fd;
     int write_fd;
     int read_pos;
+    int parse_pos;
     int write_pos;
     int total_length;
-    char buf[MAXBUF];
+    char buf[MAXLINE];
+    char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
+    char filename[MAXLINE];
+    enum {
+        GET, POST, HEAD
+    } methodtype;
     http_headers_t headers;
 } transaction_t;
 
 static transaction_t transactions[MAXTRANSACTION];
 
-int read_requesthdrs(rio_t *rp, http_headers_t *hdrs);
-
-void parse_uri(char *uri, char *filename);
-
-void serve_download(int fd, char *filename, int filesize);
-
-void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers);
-
-void get_filetype(char *filename, char *filetype);
-
-void clienterror(int fd, char *cause, char *errnum,
+void accept_connection(int fd, int efd);
+void read_request_header(transaction_t* trans, int efd);
+void handle_error(int efd, transaction_t* trans, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
+int read_requesthdrs(rio_t *rp, http_headers_t *hdrs);
+void parse_uri(char *uri, char *filename);
+void serve_download(int fd, char *filename, int filesize);
+void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers);
+void get_filetype(char *filename, char *filetype);
+
 void init_headers(http_headers_t *headers);
-
 void destroy_headers(http_headers_t *hdrs);
-
 void destroy_header_item(http_header_item_t *item);
-
 void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
+void init_transaction(transaction_t* trans);
+void cleanup_transaction(transaction_t* trans);
+void init_transaction_slots();
+transaction_t* find_empty_transaction_for_fd(int fd);
 
 /*
  * Handle HTTP/1.0 transactions
  * Event-based using epoll.
  */
-void handle_request(int fd, int listenfd) {
+void handle_request(int fd, int listenfd, int efd) {
     if (fd == listenfd) {
+        accept_connection(fd);
         // Accept socket
         return;
     }
@@ -85,49 +91,141 @@ void handle_request(int fd, int listenfd) {
             break;
         case S_SEND_RESP_HEADER:
             break;
-        case S_SEND_RESP:
+        case S_SEND_RESP_BODY:
             break;
     }
     return;
-    struct stat sbuf;
-    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-    char filename[MAXLINE];
-    enum {
-        GET, POST, HEAD
-    } methodtype;
-    rio_t rio;
+}
 
-    /* Read request line */
-    rio_readinitb(&rio, fd);
-    if (!rio_readlineb(&rio, buf, MAXLINE)) // FIXME: deal with overflow
+void accept_connection(int fd, int efd) {
+    socklen_t clientlen;
+    struct sockaddr_storage clientaddr;
+    int connfd;
+
+    clientlen = sizeof(clientaddr);
+    while (true) { // edge-trigger mode, poll until accept succeeds
+        connfd = accept(listenfd, (SA*) &clientaddr, &clientlen);
+        if (connfd < 0) { /* not ready */
+            if (not (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                unix_error("accept");
+            }
+            break;
+        }
+    }
+    transaction_t* slot = find_empty_transaction_for_fd(fd);
+    if (set_nonblocking(connfd) == ERROR) {
+        unix_error("set conn socket nonblocking");
+        close(connfd);
         return;
-    printf("%s", buf);
-    sscanf(buf, "%s %s %s", method, uri, version);
+    }
+    /* add to epoll */
+    epoll_event_t event;
+    event.dataf.fd = connfd;
+    event.events = EPOLLIN | EPOLLET;
+    if (epoll_ctl(efd, EPOLL_CTL_ADD, connfd, &event) == ERROR) {
+        unix_error("epoll add conn socket");
+        close(connfd);
+        return;
+    }
+    if (slot == NULL) {
+        close(connfd); /* Reached transaction limit */
+        return;
+    }
+    init_transaction(slot);
+    slot->fd = connfd;
+    slot->status = S_READ_REQ_HEADER;
+}
 
-    if (strcasecmp(method, "GET") == 0) methodtype = GET;
-    else if (strcasecmp(method, "POST") == 0) methodtype = POST;
-    else if (strcasecmp(method, "HEAD") == 0) methodtype = HEAD;
+void read_request_header(transaction_t* trans, int efd) {
+    ssize_t count;
+    while (true) {
+        count = read(trans->fd, trans->buf+trans->read_pos, MAXBUF-trans->read_pos);
+        if (count < 0) {
+            if (errno != EAGAIN) {
+                unix_error("failed to read");
+                handle_error(efd, trans, "", "400", "Bad Request", "Failed to read request line & header");
+                return;
+            } else { /* EAGAIN: done reading */
+                break;
+            }
+        } else if (count == 0) { /* Client closed connection */
+            cleanup_transaction(trans);
+            return;
+        } else {
+            trans->read_pos += count;
+        }
+    }
+
+    if (trans->read_pos > BUF_SIZE - 1) { /* Buffer full */
+        handle_error(efd, trans, "", "400", "Bad Request", "Request header too long");
+        return;
+    }
+
+    /* Search for end of header "\r\n\r\n" */
+    const char header_tail[] = "\r\n\r\n";
+    int header_tail_len = 4;
+    int i;
+    bool read_header_tail = false;
+    for (; (not (read_header_tail)) and (trans->parse_pos < trans->read_pos - header_tail_len); i++) {
+        read_header_tail = true;
+        for (i = 0; i < header_tail_len; i ++) {
+            if (trans->buf[trans->parse_pos+i] != header_tail[i]) {
+                read_header_tail = false;
+                continue;
+            }
+        }
+    }
+    if (not (read_header_tail)) {
+        return; /* haven't read the entire header */
+    }
+
+    /* parse request line and header */
+    if (sscanf("%s %s %s", trans->method, trans->uri, trans->version) != 3) {
+        handle_error(efd, trans, "", "400", "Bad Request", "Invalid request line");
+        return;
+    }
+    char* tofree, *remain, *value_s, *key_s;
+    int header_len = trans->parse_pos + header_tail_len;
+    tofree = remain = calloc(sizeof(char), header_len + 1);
+    strncpy(tofree, trans->buf, header_len);
+
+    strsep(&remain, "\r\n"); /* skip request line */
+    while ((value_s = strsep(&remain, "\r\n")) != NULL) {
+        if (strlen(value_s) == 0) continue;
+
+        key_s = strsep(&value_s, ": ");
+
+        size_t value_len = strlen(value_s);
+        if (value_len < 1 || value_s[0] != ' ') {
+            free(tofree);
+            handle_error(efd, trans, "", "400", "Bad Request", "Invalid request header");
+            return;
+        }
+        value_s += 1; // value_s points to the sp of ': ', move to the beginning.
+
+        item = (http_header_item_t *) malloc(sizeof(http_header_item_t));
+        strncpy(item->key, key_s, MAXLINE);
+        strncpy(item->value, value_s, MAXLINE);
+
+        printf("KEY[%s] VALUE[%s]\n", item->key, item->value);
+
+        append_header(&trans->headers, item);
+    }
+    free(tofree);
+
+    if (strcasecmp(trans->method, "GET") == 0) trans->methodtype = GET;
+    else if (strcasecmp(trans->method, "POST") == 0) trans->methodtype = POST;
+    else if (strcasecmp(trans->method, "HEAD") == 0) trans->methodtype = HEAD;
     else {
-        clienterror(fd, method, "501", "Not Implemented",
-                    "Tiny does not implement this method");
+        handle_error(efd, trans, trans->method, "501", "Not Implemented",
+                    "Naive server does not implement this method");
         return;
     }
 
     /* Parse URI from request */
-    parse_uri(uri, filename);
+    parse_uri(trans->uri, trans->filename);
 
-    /* Parse request headers */
-    http_headers_t headers;
-    init_headers(&headers);
-    if (read_requesthdrs(&rio, &headers) < 0) {
-        destroy_headers(&headers);
-        clienterror(fd, filename, "400", "Bad Request", "Could not parse request header.");
-        return;
-    }
-
-    if (methodtype == POST) { /* Upload file */
-        serve_upload(fd, &rio, filename, &headers);
-    } else {
+/* 
         if (stat(filename, &sbuf) < 0) {
             destroy_headers(&headers);
             clienterror(fd, filename, "404", "Not found",
@@ -140,18 +238,12 @@ void handle_request(int fd, int listenfd) {
                         "Tiny couldn't read the file");
             return;
         }
-
-        /*
-         * Download file. First check whether the file exists.
-         */
         if (methodtype == GET) {
             serve_download(fd, filename, sbuf.st_size);
         } else if (methodtype == HEAD) {
             // FIXME not implemented
         }
-    }
-    /* Release resources */
-    destroy_headers(&headers);
+        */
 }
 
 /*
@@ -398,4 +490,37 @@ void destroy_header_item(http_header_item_t *item) {
     if (item == NULL) return;
     if (item->next != NULL) destroy_header_item(item->next);
     free(item);
+}
+
+void init_transaction(transaction_t* trans) {
+    trans->fd = -1;
+    trans->read_fd = -1;
+    trans->status = S_INVALID;
+    trans->read_pos = 0;
+    trans->write_pos = 0;
+    trans->parse_pos = 0;
+    init_headers(&trans->headers);
+}
+
+void init_transaction_slots() {
+    int i;
+    for (i = 0; i < MAXEVENT; i++) {
+        transactions[i].pid = -1;
+    }
+}
+
+transaction_t* find_empty_transaction_for_fd(int fd) {
+    int i = 0;
+    while (i < MAXEVENT) {
+        if (transactions[i].pid == -1) return &transactions[i];
+        i += 1;
+    }
+    return NULL;
+}
+
+void handle_error(int efd, transaction_t* trans, char *cause, char *errnum, char *shortmsg, char *longmsg) {
+    // TODO: Remove fd from epoll
+    // TODO: Clean up trans
+    printf("Client error: %s %s %s %s\n", cause, errnum, shortmsg, longmsg);
+    clienterror(trans->fd, cause, errnum, shortmsg, longmsg);
 }

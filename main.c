@@ -44,6 +44,7 @@ int main(int argc, char** argv) {
     }
     epoll_event_t events[MAXEVENT];
 
+    init_transaction_slots();
     printf("Server up and running at port %s\n", argv[1]);
 
     return 0;
@@ -61,7 +62,7 @@ int main(int argc, char** argv) {
                 close(events[i].data.fd); // TODO error handler
                 continue;
             }
-            handle_request(events[i].data.fd, listenfd);
+            handle_request(events[i].data.fd, listenfd, efd);
         }
 /*
         clientlen = sizeof(clientaddr);
