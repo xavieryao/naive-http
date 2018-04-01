@@ -13,16 +13,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define NAIVE_HTTP_HTTP_H
 
 #include "misc.h"
-#if defined(__APPLE__)
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/uio.h>
-#include <copyfile.h>
-#elif defined(__linux__)
-#include <sys/sendfile.h>
-#else
-#error "Only Darwin or Linux is supported!"
-#endif
 void handle_conn(int fd);
 
 /*
