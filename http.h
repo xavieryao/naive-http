@@ -12,8 +12,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #ifndef NAIVE_HTTP_HTTP_H
 #define NAIVE_HTTP_HTTP_H
 
+#include <sys/epoll.h>
 #include "misc.h"
-void handle_conn(int fd);
+void handle_request(int fd, int listenfd);
 
 /*
  * entity of request header
