@@ -67,7 +67,6 @@ void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
 void init_transaction(transaction_t* trans);
 void cleanup_transaction(transaction_t* trans);
-void init_transaction_slots();
 transaction_t* find_empty_transaction_for_fd(int fd);
 
 /*
