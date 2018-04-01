@@ -225,13 +225,15 @@ void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers) {
      *
      * DEFER: close/clean file
      */
-    dest_fd = open(filename, O_WRONLY | O_CREAT | O_EXLOCK, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
+    dest_fd = open(filename, O_WRONLY | O_CREAT /*| O_EXLOCK*/, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
+    // FIXME O_EXLOCK not available on Linux
     if (dest_fd <= 0) {
         unix_error("Could not open file.");
         clienterror(fd, filename, "503", "Service Unavailable", "Cannot create the requested file.");
         return;
     }
-#if defined(__APPLE__)
+
+    /* write file */
     char buffer[MAXBUF];
     long transferred = 0;
     long to_read, read_n;
@@ -265,16 +267,6 @@ void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers) {
     if (fclose(dest_file) != 0) {
         unix_error("fclose failed");
     }
-#elif defined(__linux__)
-    // FIXME Content not long enough
-    if (sendfile(dest_fd, in_fd, NULL, content_len) == ERROR) {
-        unix_error("sendfile failed.");
-    } else {
-        ok = true;
-    }
-#else
-#error "Only Darwin or Linux is supported!"
-#endif
     /* Clean up */
     if (ok) printf("Upload done!\n");
     else { // clean up
