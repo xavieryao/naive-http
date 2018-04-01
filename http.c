@@ -261,12 +261,31 @@ void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers) {
         }
         transferred += to_read;
     }
-    fclose(dest_file);
-    printf("done!\n");
+    ok = transferred == content_len;
+
+    if (fclose(dest_file) != 0) {
+        unix_error("fclose failed");
+    }
 #elif defined(__linux__)
+    // FIXME Content not long enough
+    if (sendfile(dest_fd, in_fd, NULL, content_len) == ERROR) {
+        unix_error("sendfile failed.");
+    } else {
+        ok = true;
+    }
 #else
 #error "Only Darwin or Linux is supported!"
 #endif
+    /* Clean up */
+    if (ok) printf("Upload done!\n");
+    else { // clean up
+        if (close(dest_fd) == ERROR) {
+            unix_error("close failed"); /* Just ignore. */
+        }
+        if (remove(filename) == ERROR) { /* Remove created file */
+            unix_error("remove failed"); /* Just ignore. */
+        }
+    }
 }
 
 /*
