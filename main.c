@@ -47,7 +47,6 @@ int main(int argc, char** argv) {
     init_transaction_slots();
     printf("Server up and running at port %s\n", argv[1]);
 
-    return 0;
     int rc;
     int n, i;
     while (true) {
