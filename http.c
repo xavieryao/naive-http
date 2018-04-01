@@ -22,6 +22,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "http.h"
 #include "error_handler.h"
 #include "rio.h"
+#include "socket_util.h"
 
 typedef enum {S_INVALID, S_READ_REQ_HEADER, S_SEND_RESP_HEADER, S_SEND_RESP_BODY} trans_status_e;
 
@@ -51,6 +52,8 @@ void read_request_header(transaction_t* trans, int efd);
 void handle_error(int efd, transaction_t* trans, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
+void clienterror(int fd, char *cause, char *errnum,
+                 char *shortmsg, char *longmsg);
 int read_requesthdrs(rio_t *rp, http_headers_t *hdrs);
 void parse_uri(char *uri, char *filename);
 void serve_download(int fd, char *filename, int filesize);
@@ -73,7 +76,7 @@ transaction_t* find_empty_transaction_for_fd(int fd);
  */
 void handle_request(int fd, int listenfd, int efd) {
     if (fd == listenfd) {
-        accept_connection(fd);
+        accept_connection(fd, efd);
         // Accept socket
         return;
     }
@@ -104,7 +107,7 @@ void accept_connection(int fd, int efd) {
 
     clientlen = sizeof(clientaddr);
     while (true) { // edge-trigger mode, poll until accept succeeds
-        connfd = accept(listenfd, (SA*) &clientaddr, &clientlen);
+        connfd = accept(fd, (SA*) &clientaddr, &clientlen);
         if (connfd < 0) { /* not ready */
             if (not (errno == EAGAIN || errno == EWOULDBLOCK)) {
                 unix_error("accept");
@@ -120,7 +123,7 @@ void accept_connection(int fd, int efd) {
     }
     /* add to epoll */
     epoll_event_t event;
-    event.dataf.fd = connfd;
+    event.data.fd = connfd;
     event.events = EPOLLIN | EPOLLET;
     if (epoll_ctl(efd, EPOLL_CTL_ADD, connfd, &event) == ERROR) {
         unix_error("epoll add conn socket");
@@ -156,7 +159,7 @@ void read_request_header(transaction_t* trans, int efd) {
         }
     }
 
-    if (trans->read_pos > BUF_SIZE - 1) { /* Buffer full */
+    if (trans->read_pos > MAXBUF - 1) { /* Buffer full */
         handle_error(efd, trans, "", "400", "Bad Request", "Request header too long");
         return;
     }
@@ -203,7 +206,7 @@ void read_request_header(transaction_t* trans, int efd) {
         }
         value_s += 1; // value_s points to the sp of ': ', move to the beginning.
 
-        item = (http_header_item_t *) malloc(sizeof(http_header_item_t));
+        http_header_item_t *item = (http_header_item_t *) malloc(sizeof(http_header_item_t));
         strncpy(item->key, key_s, MAXLINE);
         strncpy(item->value, value_s, MAXLINE);
 
@@ -505,7 +508,7 @@ void init_transaction(transaction_t* trans) {
 void init_transaction_slots() {
     int i;
     for (i = 0; i < MAXEVENT; i++) {
-        transactions[i].pid = -1;
+        transactions[i].fd = -1;
     }
 }
 
