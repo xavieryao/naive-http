@@ -23,6 +23,22 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "error_handler.h"
 #include "rio.h"
 
+typedef enum {S_READ_REQ_HEADER, S_SEND_RESP_HEADER, S_SEND_RESP} trans_status_e;
+
+typedef struct {
+    int fd;
+    trans_status_e status;
+    int response_code;
+    int read_fd;
+    int write_fd;
+    int read_pos;
+    int write_pos;
+    int total_length;
+    char buf[MAXBUF];
+    http_headers_t headers;
+} transaction_t;
+
+static transaction_t transactions[MAXTRANSACTION];
 
 int read_requesthdrs(rio_t *rp, http_headers_t *hdrs);
 
@@ -47,9 +63,32 @@ void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
 
 /*
- * Iteratively handle HTTP/1.0 transactions
+ * Handle HTTP/1.0 transactions
+ * Event-based using epoll.
  */
-void handle_conn(int fd) {
+void handle_request(int fd, int listenfd) {
+    if (fd == listenfd) {
+        // Accept socket
+        return;
+    }
+    int i;
+    transaction_t* trans = NULL;
+    for (i = 0; i < MAXTRANSACTION; i++) {
+        if (transactions[i].fd == fd) {
+            trans = &transactions[i];
+            break;
+        }
+    }
+    if (trans == NULL) return;
+    switch (trans->status) {
+        case S_READ_REQ_HEADER:
+            break;
+        case S_SEND_RESP_HEADER:
+            break;
+        case S_SEND_RESP:
+            break;
+    }
+    return;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE];

@@ -14,7 +14,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/errno.h>
+#include <fcntl.h>
 #include "socket_util.h"
+#include "error_handler.h"
 
 /*
  * Helper functions to create sockets.
@@ -70,6 +72,13 @@ int open_listenfd(char *port)
         close(listenfd);
         return -1;
     }
+
+    if (set_nonblocking(listenfd) < 0) {
+        unix_error("set nonblocking failed");
+        close(listenfd);
+        return -1;
+    }
+
     return listenfd;
 }
 
@@ -119,4 +128,15 @@ int open_clientfd(char *hostname, char *port) {
         return -1;
     else    /* The last connect succeeded */
         return clientfd;
+}
+
+/*
+ * set_nonblocking: set a fd into nonblocking mode
+ * http://www.kegel.com/dkftpbench/nonblocking.html
+ */
+int set_nonblocking(int fd) {
+    int flags;
+    if ((flags = fcntl(fd, F_GETFL, 0)) == -1)
+        flags = 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }

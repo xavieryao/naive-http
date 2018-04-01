@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include "misc.h"
 #include "socket_util.h"
 #include "error_handler.h"
@@ -26,10 +27,43 @@ int main(int argc, char** argv) {
         app_error("Fatal. Cannot open listen socket.");
         return -1;
     }
+
+    /* setup epoll */
+    int efd = epoll_create1(0);
+    if (efd < 0) {
+        unix_error("Fatal. Failed to setup epoll");
+        return -1;
+    }
+
+    epoll_event_t event;
+    event.data.fd = listenfd;
+    event.events = EPOLLIN | EPOLLET;
+    if (epoll_ctl(efd, EPOLL_CTL_ADD, listenfd, &event) < 0) {
+        unix_error("Fatal. Failed to add listen fd to epoll");
+        return -1;
+    }
+    epoll_event_t events[MAXEVENT];
+
     printf("Server up and running at port %s\n", argv[1]);
 
+    return 0;
     int rc;
+    int n, i;
     while (true) {
+        n = epoll_wait(efd, events, MAXEVENT, -1);
+        if (n == -1) {
+            unix_error("Fatal. epoll wait failed");
+            return -1;
+        }
+        for (i = 0; i < n; i++) {
+            if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
+                app_error("epoll error");
+                close(events[i].data.fd); // TODO error handler
+                continue;
+            }
+            handle_request(events[i].data.fd, listenfd);
+        }
+/*
         clientlen = sizeof(clientaddr);
 
         connfd = accept(listenfd, (SA*) &clientaddr, &clientlen);
@@ -49,6 +83,7 @@ int main(int argc, char** argv) {
         if (close(connfd) == -1) {
             unix_error("Failed to connect connection socket.");
         }
+*/
     }
     return 0;
 }

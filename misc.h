@@ -15,6 +15,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 /* miscellaneous constants */
 #define MAXLINE 1024 /* maximum line length */
 #define MAXBUF 1024 /* maximum buffer size */
+#define MAXEVENT 64 /* maximum epoll event */
+#define MAXTRANSACTION 1024 /* maximum transaction */
 
 #define OKAY 0
 #define ERROR -1
@@ -26,5 +28,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 /* struct aliases */
 typedef struct sockaddr SA;
+typedef struct epoll_event epoll_event_t;
 
 #endif //NAIVE_HTTP_CONST_H
