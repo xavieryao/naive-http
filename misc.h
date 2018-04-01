@@ -19,6 +19,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define OKAY 0
 #define ERROR -1
 
+#define MAX_FILE_SIZE 1073741824 /* Only accept files smaller than 1GB */
+
+#define MIN(X,Y) X<Y ? X : Y
+#define MAX(X,Y) X>=Y ? X : Y
+
 /* struct aliases */
 typedef struct sockaddr SA;
 

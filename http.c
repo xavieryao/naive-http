@@ -18,22 +18,33 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <iso646.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/errno.h>
+#include <copyfile.h>
 #include "http.h"
+#include "error_handler.h"
 #include "rio.h"
 
 
 int read_requesthdrs(rio_t *rp, http_headers_t *hdrs);
+
 void parse_uri(char *uri, char *filename);
+
 void serve_download(int fd, char *filename, int filesize);
-void serve_upload(int fd, char *filename, int filesize);
+
+void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers);
+
 void get_filetype(char *filename, char *filetype);
+
 void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
 void init_headers(http_headers_t *headers);
-void destroy_headers(http_headers_t* hdrs);
-void destroy_header_item(http_header_item_t* item);
-void append_header(http_headers_t* hdrs, http_header_item_t* item);
+
+void destroy_headers(http_headers_t *hdrs);
+
+void destroy_header_item(http_header_item_t *item);
+
+void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
 
 /*
@@ -43,7 +54,9 @@ void handle_conn(int fd) {
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE];
-    enum {GET, POST, HEAD} methodtype;
+    enum {
+        GET, POST, HEAD
+    } methodtype;
     rio_t rio;
 
     /* Read request line */
@@ -75,7 +88,7 @@ void handle_conn(int fd) {
     }
 
     if (methodtype == POST) { /* Upload file */
-
+        serve_upload(fd, &rio, filename, &headers);
     } else {
         if (stat(filename, &sbuf) < 0) {
             destroy_headers(&headers);
@@ -99,6 +112,7 @@ void handle_conn(int fd) {
             // FIXME not implemented
         }
     }
+    /* Release resources */
     destroy_headers(&headers);
 }
 
@@ -110,32 +124,31 @@ int read_requesthdrs(rio_t *rp, http_headers_t *hdrs) {
     printf("Read request hdrs\n");
 
     char buf[MAXLINE];
-    char* key_s, *value_s, *to_free;
-    http_header_item_t* item = NULL;
+    char *key_s, *value_s, *to_free;
+    http_header_item_t *item = NULL;
 
     while (true) {
         if (rio_readlineb(rp, buf, MAXLINE) <= 0) return ERROR;
         if (strcmp(buf, "\r\n") == 0) break;
 
-        printf("buf: %s", buf);
-
         to_free = value_s = strdup(buf);
         key_s = strsep(&value_s, ": ");
 
         size_t value_len = strlen(value_s);
-        printf("len before %d\n", value_len);
-        if (value_len < 3 || !(value_s[value_len-1] == '\n' && value_s[value_len-2] == '\r')) {
+        if (value_len < 3 || !(value_s[0] == ' ' && value_s[value_len - 1] == '\n' && value_s[value_len - 2] == '\r')) {
             free(to_free);
             return ERROR;
         }
         value_s += 1; // value_s points to the sp of ': ', move to the beginning.
 
+        value_s[value_len - 3] = '\0'; // trim '\r\n'
 
-        value_s[value_len-3] = '\0'; // trim '\r\n'
-
-        item = (http_header_item_t*) malloc(sizeof(http_header_item_t));
+        item = (http_header_item_t *) malloc(sizeof(http_header_item_t));
         strncpy(item->key, key_s, MAXLINE);
         strncpy(item->value, value_s, MAXLINE);
+
+        printf("KEY[%s] VALUE[%s]\n", item->key, item->value);
+
         append_header(hdrs, item);
         free(to_free);
     }
@@ -179,6 +192,83 @@ void serve_download(int fd, char *filename, int filesize) {
     munmap(srcp, filesize);
 }
 
+void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers) {
+    printf("serve upload %s\n", filename);
+    long content_len = -1;
+    int dest_fd;
+    bool ok = false;
+
+    http_header_item_t* hdr_item = headers->head;
+    while (hdr_item != NULL) {
+        if (strcmp(hdr_item->key, "Content-Length") == 0) {
+            content_len = strtol(hdr_item->value, NULL, 10);
+            if (errno) {
+                unix_error("strtol failed");
+                content_len = -1;
+            }
+            break;
+        }
+        hdr_item = hdr_item->next;
+    }
+    if (content_len <= 0) {
+        clienterror(fd, filename, "400", "Bad Request", "Content-Length must be provided and be positive.");
+        return;
+    }
+    if (content_len > MAX_FILE_SIZE) {
+        clienterror(fd, filename, "400", "Bad Request", "File larger than limit.");
+        return;
+    }
+
+    /*
+     * Use exclusive file lock to deal with consistency.
+     * Use chroot to restrict access.
+     * Permission: only owner can read/write.
+     *
+     * DEFER: close/clean file
+     */
+    dest_fd = open(filename, O_WRONLY | O_CREAT | O_EXLOCK, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
+    if (dest_fd <= 0) {
+        unix_error("Could not open file.");
+        clienterror(fd, filename, "503", "Service Unavailable", "Cannot create the requested file.");
+        return;
+    }
+#if defined(__APPLE__)
+    char buffer[MAXBUF];
+    long transferred = 0;
+    long to_read, read_n;
+    FILE* dest_file = fdopen(dest_fd, "w");
+    if (not dest_file) {
+        unix_error("failed to open dest_file");
+        clienterror(fd, filename, "503", "Service Unavailable", "Cannot create the requested file.");
+        // FIXME cleanup
+        return;
+    }
+    while (transferred < content_len) {
+        to_read = MIN(MAXBUF, content_len - transferred);
+        read_n = rio_readnb(rio, buffer, to_read);
+        if (read_n < 0) {
+            unix_error("read from net socket failed.");
+            break;
+        }
+        if (read_n < to_read) {
+            printf("%d %d\n", read_n, to_read);
+            app_error("not long enough!");
+            break;
+        }
+        if (fwrite(buffer, sizeof(char), to_read, dest_file) != to_read) {
+            unix_error("failed to fwrite");
+            break;
+        }
+        transferred += to_read;
+    }
+    fclose(dest_file);
+    printf("done!\n");
+#elif defined(__linux__)
+#else
+#error "Only Darwin or Linux is supported!"
+#endif
+}
+
 /*
  * get_filetype - derive file type from file name
  */
@@ -200,6 +290,7 @@ void get_filetype(char *filename, char *filetype) {
  */
 void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg) {
+    printf("client error %s %s %s\n", errnum, shortmsg, longmsg);
     char buf[MAXLINE], body[MAXBUF];
 
     /* Build the HTTP response body */
@@ -222,7 +313,7 @@ void clienterror(int fd, char *cause, char *errnum,
 /*
  * init_headers Initialize a http_headers_t struct
  */
-void init_headers(http_headers_t* hdrs) {
+void init_headers(http_headers_t *hdrs) {
     hdrs->len = 0;
     hdrs->head = NULL;
     hdrs->tail = NULL;
@@ -231,7 +322,7 @@ void init_headers(http_headers_t* hdrs) {
 /*
  * append_header Append an entity
  */
-void append_header(http_headers_t* hdrs, http_header_item_t* item) {
+void append_header(http_headers_t *hdrs, http_header_item_t *item) {
     item->next = NULL;
     if (hdrs->len == 0) {
         hdrs->len = 1;
@@ -247,14 +338,14 @@ void append_header(http_headers_t* hdrs, http_header_item_t* item) {
 /*
  * destroy_headers Destroy a http_headers_t struct
  */
-void destroy_headers(http_headers_t* hdrs) {
+void destroy_headers(http_headers_t *hdrs) {
     destroy_header_item(hdrs->head);
 }
 
 /*
  * destroy_header_item Destroy a http_header_item_t struct
  */
-void destroy_header_item(http_header_item_t* item) {
+void destroy_header_item(http_header_item_t *item) {
     if (item == NULL) return;
     if (item->next != NULL) destroy_header_item(item->next);
     free(item);
