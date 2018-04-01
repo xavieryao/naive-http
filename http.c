@@ -116,35 +116,33 @@ void accept_connection(int fd, int efd) {
         if (connfd < 0) { /* not ready */
             if (not (errno == EAGAIN || errno == EWOULDBLOCK)) {
                 unix_error("accept");
-                return;
-            } else {
-                break;
             }
+            break;
         }
-    }
-    transaction_t* slot = find_empty_transaction_for_fd(fd);
+        transaction_t* slot = find_empty_transaction_for_fd(fd);
 
-    if (set_nonblocking(connfd) == ERROR) {
-        unix_error("set conn socket nonblocking");
-        close(connfd);
-        return;
+        if (set_nonblocking(connfd) == ERROR) {
+            unix_error("set conn socket nonblocking");
+            close(connfd);
+            return;
+        }
+        /* add to epoll */
+        epoll_event_t event;
+        event.data.fd = connfd;
+        event.events = EPOLLIN | EPOLLET;
+        if (epoll_ctl(efd, EPOLL_CTL_ADD, connfd, &event) == ERROR) {
+            unix_error("epoll add conn socket");
+            close(connfd);
+            return;
+        }
+        if (slot == NULL) {
+            close(connfd); /* Reached transaction limit */
+            return;
+        }
+        init_transaction(slot);
+        slot->fd = connfd;
+        slot->status = S_READ_REQ_HEADER;
     }
-    /* add to epoll */
-    epoll_event_t event;
-    event.data.fd = connfd;
-    event.events = EPOLLIN | EPOLLET;
-    if (epoll_ctl(efd, EPOLL_CTL_ADD, connfd, &event) == ERROR) {
-        unix_error("epoll add conn socket");
-        close(connfd);
-        return;
-    }
-    if (slot == NULL) {
-        close(connfd); /* Reached transaction limit */
-        return;
-    }
-    init_transaction(slot);
-    slot->fd = connfd;
-    slot->status = S_READ_REQ_HEADER;
 }
 
 void read_request_header(transaction_t* trans, int efd) {
