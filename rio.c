@@ -110,7 +110,8 @@ static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n) {
  * Buffered read line. Equivalent to readline().
  * Read from file until encounter \n or read maxlen bytes.
  */
-ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen) {
+ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
+{
     int n, rc;
     char c, *bufp = usrbuf;
 
@@ -127,10 +128,10 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen) {
             else
                 break;    /* EOF, some data was read */
         } else
-            return -1;      /* Error */
+            return -1;	  /* Error */
     }
     *bufp = 0;
-    return n - 1;
+    return n-1;
 }
 
 /*

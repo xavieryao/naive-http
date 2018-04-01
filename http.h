@@ -9,17 +9,28 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef NAIVE_HTTP_CONST_H
-#define NAIVE_HTTP_CONST_H
+#ifndef NAIVE_HTTP_HTTP_H
+#define NAIVE_HTTP_HTTP_H
 
-/* miscellaneous constants */
-#define MAXLINE 1024 /* maximum line length */
-#define MAXBUF 1024 /* maximum buffer size */
+#include "misc.h"
 
-#define OKAY 0
-#define ERROR -1
+void handle_conn(int fd);
 
-/* struct aliases */
-typedef struct sockaddr SA;
+/*
+ * entity of request header
+ */
+typedef struct _http_header_item_t {
+    char key[MAXLINE];
+    char value[MAXLINE];
+    struct _http_header_item_t *next;
+} http_header_item_t;
 
-#endif //NAIVE_HTTP_CONST_H
+/*
+ * list of entities of request header
+ */
+typedef struct {
+    int len;
+    http_header_item_t* head, *tail;
+} http_headers_t;
+
+#endif //NAIVE_HTTP_HTTP_H

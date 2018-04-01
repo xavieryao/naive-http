@@ -5,8 +5,8 @@
 #include "misc.h"
 #include "socket_util.h"
 #include "error_handler.h"
+#include "http.h"
 
-void handle_conn(int fd);
 
 int main(int argc, char** argv) {
     printf("Hello, World!\n");
@@ -51,8 +51,4 @@ int main(int argc, char** argv) {
         }
     }
     return 0;
-}
-
-void handle_conn(int fd) {
-
 }
