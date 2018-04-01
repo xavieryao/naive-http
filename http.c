@@ -527,3 +527,7 @@ void handle_error(int efd, transaction_t* trans, char *cause, char *errnum, char
     printf("Client error: %s %s %s %s\n", cause, errnum, shortmsg, longmsg);
     clienterror(trans->fd, cause, errnum, shortmsg, longmsg);
 }
+
+void cleanup_transaction(transaction_t* trans) {
+    // TODO: Implement
+}
