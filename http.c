@@ -19,7 +19,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/errno.h>
-#include <copyfile.h>
 #include "http.h"
 #include "error_handler.h"
 #include "rio.h"
