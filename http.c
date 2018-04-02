@@ -342,10 +342,10 @@ void send_resp_header(int efd, transaction_t* trans) {
     /* Send response headers to client */
     get_filetype(trans->filename, filetype);
     header_len = snprintf(trans->write_buf, sizeof(trans->write_buf), "HTTP/1.0 200 OK\r\n");
-    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Server: Naive HTTP Server\r\n");
-    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Connection: close\r\n");
-    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Content-length: %d\r\n", trans->filesize);
-    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Content-type: %s\r\n\r\n", filetype);
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Server: Naive HTTP Server\r\n");
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Connection: close\r\n");
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-length: %d\r\n", trans->filesize);
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-type: %s\r\n\r\n", filetype);
 
     trans->write_len = strlen(trans->write_buf);
     trans->next_stage = P_SEND_RESP_BODY;
@@ -657,13 +657,15 @@ transaction_t* find_empty_transaction_for_fd(int fd) {
 void handle_error(int efd, transaction_t* trans, char *cause, char *errnum, char *shortmsg, char *longmsg) {
     printf("client error %s %s %s\n", errnum, shortmsg, longmsg);
     /* Build the HTTP response body */
+    /*
     snprintf(trans->write_buf, sizeof(trans->writebuf), "<html><title>Tiny Error</title>");
     snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<body bgcolor=""ffffff"">\r\n", body);
     snprintf(trans->write_buf, sizeof(trans->writebuf), "%s%s: %s\r\n", body, errnum, shortmsg);
     snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<p>%s: %s\r\n", body, longmsg, cause);
     snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<hr><em>The Tiny Web server</em>\r\n", body);
-
+    */
     /* Print the HTTP response */
+    /*
     sprintf(read_buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
     rio_writen(fd, read_buf, strlen(read_buf));
     sprintf(read_buf, "Content-type: text/html\r\n");
@@ -672,5 +674,6 @@ void handle_error(int efd, transaction_t* trans, char *cause, char *errnum, char
     rio_writen(fd, read_buf, strlen(read_buf));
     rio_writen(fd, body, strlen(body));
     clienterror(trans->fd, cause, errnum, shortmsg, longmsg);
+    */
 }
 
