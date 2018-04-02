@@ -50,7 +50,7 @@ void remove_transaction_from_slots(transaction_t* trans) {
     }
 }
 
-transaction_slot_t* find_empty_transaction_for_fd(int fd) {
+transaction_t* find_empty_transaction_for_fd(int fd) {
     if (slots.n > MAXTRANSACTION) return NULL;
     transaction_node_t* node = slots.transactions[fd % MAXHASH];
     transaction_node_t* prev = node;
