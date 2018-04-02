@@ -422,7 +422,7 @@ void serve_upload(int efd, transaction_t* trans) {
         }
 
         /* write file */
-        trans->dest_file = fdopen(trans->dest_fd, "w");
+        trans->dest_file = fdopen(trans->write_fd, "w");
         if (not trans->dest_file) {
             unix_error("failed to open dest_file");
             client_error(efd, trans, trans->filename, "503", "Service Unavailable", "Cannot create the requested file.");
