@@ -25,41 +25,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "rio.h"
 #include "socket_util.h"
 
-/* which state of transmission */
-typedef enum {S_INVALID, S_READ_REQ_HEADER, S_READ, S_WRITE, S_WRITE_FILE} trans_state_e;
-/* which stage of the protocol */
-typedef enum {P_INVALID, P_SEND_RESP_HEADER, P_SEND_RESP_BODY, P_READ_REQ_BODY, P_DONE} stage_e;
-
-typedef struct {
-    /* common field */
-    int fd;
-    trans_state_e state;
-    stage_e next_stage;
-    int response_code;
-    /* read from socket */
-    char read_buf[MAXBUF];
-    long read_len;
-    long read_pos;
-    long parse_pos;
-    int write_fd;
-    int saved_pos;
-    FILE* dest_file;
-    /* write to socket */
-    char write_buf[MAXBUF];
-    long write_len;
-    long write_pos;
-    int read_fd;
-    /* request header */
-    long filesize;
-    char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-    char filename[MAXLINE];
-    enum {
-        GET, POST, HEAD
-    } methodtype;
-    http_headers_t headers;
-    /* */
-} transaction_t;
-
 static transaction_t transactions[MAXTRANSACTION];
 
 /* protocol related event-handlers */
@@ -89,11 +54,6 @@ void init_headers(http_headers_t *headers);
 void destroy_headers(http_headers_t *hdrs);
 void destroy_header_item(http_header_item_t *item);
 void append_header(http_headers_t *hdrs, http_header_item_t *item);
-
-/* transaction context management */
-void init_transaction(transaction_t* trans);
-transaction_t* find_empty_transaction_for_fd(int fd);
-void remove_transaction_from_slots(transaction_t* trans);
 
 /*
  * Handle HTTP/1.0 transactions
@@ -611,45 +571,6 @@ void destroy_header_item(http_header_item_t *item) {
     if (item == NULL) return;
     if (item->next != NULL) destroy_header_item(item->next);
     free(item);
-}
-
-void init_transaction(transaction_t* trans) {
-    trans->fd = INVALID_FD;
-    trans->read_fd = INVALID_FD;
-    trans->write_fd = INVALID_FD;
-    trans->dest_file = NULL;
-    trans->filesize = 0;
-    trans->state = S_INVALID;
-    trans->next_stage = P_INVALID;
-    trans->read_pos = 0;
-    trans->write_pos = 0;
-    trans->parse_pos = 0;
-    trans->saved_pos = 0;
-    init_headers(&trans->headers);
-}
-
-void init_transaction_slots() {
-    int i;
-    for (i = 0; i < MAXEVENT; i++) {
-        transactions[i].fd = -1;
-    }
-}
-
-void remove_transaction_from_slots(transaction_t* trans) {
-    int i;
-    for (i = 0; i < MAXEVENT; i++) {
-        if (transactions[i].fd == trans->fd)
-            transactions[i].fd = -1;
-    }
-}
-
-transaction_t* find_empty_transaction_for_fd(int fd) {
-    int i = 0;
-    while (i < MAXEVENT) {
-        if (transactions[i].fd == -1) return &transactions[i];
-        i += 1;
-    }
-    return NULL;
 }
 
 void client_error(int efd, transaction_t* trans, char *cause, char *errnum, char *shortmsg, char *longmsg) {

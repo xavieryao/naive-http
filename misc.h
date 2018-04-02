@@ -17,6 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define MAXBUF 10240 /* maximum buffer size */
 #define MAXEVENT 64 /* maximum epoll event */
 #define MAXTRANSACTION 1024 /* maximum transaction */
+#define MAXHASH 4096 /* hash map size */
 
 #define OKAY 0
 #define ERROR -1

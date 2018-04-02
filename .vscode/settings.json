@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "strings.h": "c"
+        "strings.h": "c",
+        "http.h": "c",
+        "rio.h": "c"
     }
 }
