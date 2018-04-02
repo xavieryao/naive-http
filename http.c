@@ -238,8 +238,9 @@ void read_request_header(transaction_t* trans, int efd) {
         http_header_item_t* hdr_item = trans->headers.head;
         while (hdr_item != NULL) {
             if (strcmp(hdr_item->key, "Content-Length") == 0) {
+                printf("value [%s]\n", hdr_item->value);
                 content_len = strtol(hdr_item->value, NULL, 10);
-                if (errno) {
+                if (content_len == 0) {
                     unix_error("strtol failed");
                     content_len = -1;
                 }
