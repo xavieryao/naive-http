@@ -90,8 +90,10 @@ void destroy_headers(http_headers_t *hdrs);
 void destroy_header_item(http_header_item_t *item);
 void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
+/* transaction context management */
 void init_transaction(transaction_t* trans);
 transaction_t* find_empty_transaction_for_fd(int fd);
+void remove_transaction_from_slots(transaction_t* trans);
 
 /*
  * Handle HTTP/1.0 transactions
@@ -197,7 +199,7 @@ void read_request_header(transaction_t* trans, int efd) {
     int header_tail_len = 4;
     int i;
     bool read_header_tail = false;
-    for (trans->parse_pos=0; trans->parse_pos < trans->read_pos - header_tail_len; trans->parse_pos++) {
+    for (trans->parse_pos=0; trans->parse_pos <= trans->read_pos - header_tail_len; trans->parse_pos++) {
         read_header_tail = true;
         for (i = 0; i < header_tail_len; i ++) {
             if (trans->read_buf[trans->parse_pos+i] != header_tail[i]) {
@@ -306,12 +308,12 @@ void read_request_header(transaction_t* trans, int efd) {
         case GET:
         case HEAD:
             trans->state = S_WRITE;
+            trans->next_stage = P_SEND_RESP_HEADER;
             event.data.fd = trans->fd;
             event.events = EPOLLOUT | EPOLLET;
             if (epoll_ctl(efd, EPOLL_CTL_MOD, trans->fd, &event) < 0) {
                 unix_error("epoll ctl");
             }
-            send_resp_header(efd, trans);
             break;
         case POST:
             if (trans->read_pos == trans->parse_pos + 4) {
@@ -320,6 +322,7 @@ void read_request_header(transaction_t* trans, int efd) {
             trans->state = S_READ;
             break;
     }
+    handle_protocol_event(efd, trans);
 }
 /*
  * parse_uri - parse URI into filename
@@ -332,22 +335,24 @@ void parse_uri(char *uri, char *filename) {
 }
 
 void send_resp_header(int efd, transaction_t* trans) {
+    printf("send_resp_header\n");
     char filetype[MAXLINE];
 
     /* Send response headers to client */
     get_filetype(trans->filename, filetype);
-    snprintf(trans->read_buf, sizeof(trans->read_buf), "HTTP/1.0 200 OK\r\n");
-    snprintf(trans->read_buf, sizeof(trans->read_buf), "%sServer: Naive HTTP Server\r\n", trans->read_buf);
-    snprintf(trans->read_buf, sizeof(trans->read_buf), "%sConnection: close\r\n", trans->read_buf);
-    snprintf(trans->read_buf, sizeof(trans->read_buf), "%sContent-length: %d\r\n", trans->read_buf, trans->filesize);
-    snprintf(trans->read_buf, sizeof(trans->read_buf), "%sContent-type: %s\r\n\r\n", trans->read_buf, filetype);
+    snprintf(trans->write_buf, sizeof(trans->write_buf), "HTTP/1.0 200 OK\r\n");
+    snprintf(trans->write_buf, sizeof(trans->write_buf), "%sServer: Naive HTTP Server\r\n", trans->write_buf);
+    snprintf(trans->write_buf, sizeof(trans->write_buf), "%sConnection: close\r\n", trans->write_buf);
+    snprintf(trans->write_buf, sizeof(trans->write_buf), "%sContent-length: %d\r\n", trans->write_buf, trans->filesize);
+    snprintf(trans->write_buf, sizeof(trans->write_buf), "%sContent-type: %s\r\n\r\n", trans->write_buf, filetype);
 
-    trans->write_len = strlen(trans->read_buf);
+    trans->write_len = strlen(trans->write_buf);
     trans->next_stage = P_SEND_RESP_BODY;
     handle_transmission_event(efd, trans);
 }
 
 void write_all(int efd, transaction_t* trans) {
+    printf("write all %d\n", trans->write_len);
     ssize_t count;
     while (trans->write_pos < trans->write_len) {
         count = write(trans->fd, trans->write_buf, trans->write_len-trans->write_pos);
@@ -367,10 +372,12 @@ void write_all(int efd, transaction_t* trans) {
         }
     }
     /* write task done! */
+    printf("write task done\n");
     handle_protocol_event(efd, trans);
 }
 
 void write_file(int efd, transaction_t* trans) {
+    printf("write file to socket\n");
     int rc;
     while (trans->write_pos < trans->filesize) {
         rc = sendfile(trans->fd, trans->read_fd, &trans->write_pos, trans->filesize - trans->write_pos);
@@ -383,6 +390,7 @@ void write_file(int efd, transaction_t* trans) {
         }
     }
     /* write done */
+    printf("whole file wrote to socket\n");
     handle_protocol_event(efd, trans);
 }
 
@@ -390,8 +398,9 @@ void write_file(int efd, transaction_t* trans) {
  * serve_download - copy a file back to the client
  */
 void serve_download(int efd, transaction_t*trans) {
+    printf("serve download\n");
     int fd;
-    fd = open(trans->filename, O_READONLY, 0);
+    fd = open(trans->filename, O_RDONLY, 0);
     if (fd < 0) {
         unix_error("open file");
         handle_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot open file");
@@ -509,6 +518,7 @@ void get_filetype(char *filename, char *filetype) {
 }
 
 void finish_transaction(int efd, transaction_t* trans) {
+    printf("finish transaction\n");
     epoll_event_t event;
     event.data.fd = trans->fd;
     epoll_ctl(efd, EPOLL_CTL_DEL, trans->fd, NULL);
@@ -522,6 +532,7 @@ void finish_transaction(int efd, transaction_t* trans) {
     if (trans->read_fd > 0 && close(trans->read_fd) < 0) {
         unix_error("close read fd");
     }
+    remove_transaction_from_slots(trans);
 }
 
 /*
@@ -560,6 +571,7 @@ void handle_protocol_event(int efd, transaction_t* trans) {
             send_resp_header(efd, trans);
             break;
         case P_DONE:
+            finish_transaction(efd, trans);
             break;
     }
 }
@@ -638,6 +650,14 @@ void init_transaction_slots() {
     int i;
     for (i = 0; i < MAXEVENT; i++) {
         transactions[i].fd = -1;
+    }
+}
+
+void remove_transaction_from_slots(transaction_t* trans) {
+    int i;
+    for (i = 0; i < MAXEVENT; i++) {
+        if (transactions[i].fd == trans->fd)
+            transactions[i].fd = -1;
     }
 }
 
