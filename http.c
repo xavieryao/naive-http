@@ -91,7 +91,6 @@ void accept_connection(int fd, int efd) {
             }
             break;
         }
-        transaction_t* slot = find_empty_transaction_for_fd(fd);
 
         if (set_nonblocking(connfd) == ERROR) {
             unix_error("set conn socket nonblocking");
@@ -107,6 +106,8 @@ void accept_connection(int fd, int efd) {
             close(connfd);
             return;
         }
+
+        transaction_t* slot = find_empty_transaction_for_fd(connfd);
         if (slot == NULL) {
             close(connfd); /* Reached transaction limit */
             return;
