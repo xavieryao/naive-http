@@ -50,7 +50,7 @@ void parse_uri(char *uri, char *filename);
 void get_filetype(char *filename, char *filetype);
 
 /* data structure related functions */
-void init_headers(http_headers_t *headers);
+
 void destroy_headers(http_headers_t *hdrs);
 void destroy_header_item(http_header_item_t *item);
 void append_header(http_headers_t *hdrs, http_header_item_t *item);
