@@ -39,7 +39,7 @@ void remove_transaction_from_slots(transaction_t* trans) {
     if (trans->fd < 0) return;
     transaction_node_t* node = NULL, *prev = NULL;
     node = slots.transactions[trans->fd % MAXHASH];
-    while (node && node->transaction->fd != trans->fd) {
+    while (node && node->transaction.fd != trans->fd) {
         prev = node;
         node = node->next;
     }
@@ -68,8 +68,8 @@ transaction_t* find_empty_transaction_for_fd(int fd) {
 transaction_t* find_transaction_for_fd(int fd) {
     transaction_node_t* node = NULL;
     node = slots.transactions[fd % MAXHASH];
-    while (node && node->transaction->fd != fd) {
+    while (node && node->transaction.fd != fd) {
         node = node->next;
     }
-    return &node.transaction;
+    return &node->transaction;
 }
