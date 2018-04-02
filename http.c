@@ -344,7 +344,7 @@ void send_resp_header(int efd, transaction_t* trans) {
     header_len = snprintf(trans->write_buf, sizeof(trans->write_buf), "HTTP/1.0 200 OK\r\n");
     header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Server: Naive HTTP Server\r\n");
     header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Connection: close\r\n");
-    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Content-length: %d\r\n"trans->filesize);
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Content-length: %d\r\n", trans->filesize);
     header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Content-type: %s\r\n\r\n", filetype);
 
     trans->write_len = strlen(trans->write_buf);
