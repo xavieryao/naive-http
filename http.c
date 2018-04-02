@@ -67,13 +67,7 @@ void handle_request(int fd, int listenfd, int efd) {
         return;
     }
     int i;
-    transaction_t* trans = NULL;
-    for (i = 0; i < MAXTRANSACTION; i++) {
-        if (transactions[i].fd == fd) {
-            trans = &transactions[i];
-            break;
-        }
-    }
+    transaction_t* trans = find_transaction_for_fd(fd);
     if (trans == NULL) {
         app_error("transaction not found.");
         return;
@@ -265,6 +259,7 @@ void read_request_header(transaction_t* trans, int efd) {
 
     /* transfer state */
     epoll_event_t event;
+    int pos_i, pos_j;
     switch (trans->methodtype) {
         case GET:
         case HEAD:
@@ -279,8 +274,7 @@ void read_request_header(transaction_t* trans, int efd) {
         case POST:
             /* copy remaining part */
             /* use for-loop instead of memcpy to avoid overlap */
-            int pos_i, pos_j;
-            for (pos_i = 0, pos_j = trans->parse_pos + header_tail_len; pos_j < trans->read_pos; pos_i ++, pos_j+=) {
+            for (pos_i = 0, pos_j = trans->parse_pos + header_tail_len; pos_j < trans->read_pos; pos_i ++, pos_j++) {
                 trans->read_buf[pos_i] = trans->read_buf[pos_j];
             }
             trans->read_pos = pos_i;
@@ -364,7 +358,7 @@ void write_file(int efd, transaction_t* trans) {
 }
 
 void read_n(int efd, transaction_t* trans) {
-    printf("read_n %d\n", efd->read_len);
+    printf("read_n %d\n", trans->read_len);
     ssize_t count = 0;
     while (trans->read_pos < trans->read_len) {
         count = read(trans->fd, trans->read_buf, MIN(trans->read_len, MAXBUF-trans->read_pos));
@@ -409,7 +403,7 @@ void serve_download(int efd, transaction_t*trans) {
 }
 
 void serve_upload(int efd, transaction_t* trans) {
-    printf("serve upload %s\n", filename);
+    printf("serve upload %s\n", trans->filename);
     if (trans->write_fd == INVALID_FD) {
         /*
         * Create new file.
@@ -419,19 +413,19 @@ void serve_upload(int efd, transaction_t* trans) {
         *
         */
         // TODO defer clean file
-        trans->write_fd = open(filename, O_WRONLY | O_CREAT /*| O_EXLOCK*/, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
+        trans->write_fd = open(trans->filename, O_WRONLY | O_CREAT /*| O_EXLOCK*/, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
         // FIXME O_EXLOCK not available on Linux
         if (trans->write_fd <= 0) {
             unix_error("Could not open file.");
-            client_error(efd, trans, filename, "503", "Service Unavailable", "Cannot create the requested file.");
+            client_error(efd, trans, trans->filename, "503", "Service Unavailable", "Cannot create the requested file.");
             return;
         }
 
         /* write file */
         trans->dest_file = fdopen(trans->dest_fd, "w");
-        if (not dest_file) {
+        if (not trans->dest_file) {
             unix_error("failed to open dest_file");
-            client_error(efd, filename, "503", "Service Unavailable", "Cannot create the requested file.");
+            client_error(efd, trans, trans->filename, "503", "Service Unavailable", "Cannot create the requested file.");
             // FIXME cleanup
             return;
         }
@@ -439,7 +433,7 @@ void serve_upload(int efd, transaction_t* trans) {
     /* read buffer->file */
     if (fwrite(trans->read_buf, sizeof(char), trans->read_pos, trans->dest_file) < trans->read_pos) {
         unix_error("fwrite");
-        client_error(efd, filename, "500", "Server Internal Error", "Cannot write to the requested file.");
+        client_error(efd, trans, trans->filename, "500", "Server Internal Error", "Cannot write to the requested file.");
         return;
     }
     printf("%d bytes wrote to file.\n", trans->read_pos);
@@ -449,7 +443,7 @@ void serve_upload(int efd, transaction_t* trans) {
         trans->read_len = MIN(MAXBUF, trans->filesize - trans->saved_pos);
     } else { /* whole file uploaded */
         printf("file uploaded!\n");
-        trans->next_stage = DONE;
+        trans->next_stage = P_DONE;
         trans->read_len = 0;
     }
     handle_transmission_event(efd, trans);
@@ -488,10 +482,10 @@ void finish_transaction(int efd, transaction_t* trans) {
         unix_error("close read fd");
     }
     if (trans->dest_file != NULL) {
-        if (fclose(dest_file) != 0) {
+        if (fclose(trans->dest_file) != 0) {
             unix_error("fclose failed");
         }
-        if (remove(filename) == ERROR) { /* Remove created file */
+        if (remove(trans->filename) == ERROR) { /* Remove created file */
             unix_error("remove failed"); /* Just ignore. */
         }
     }

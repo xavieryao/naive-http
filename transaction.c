@@ -64,3 +64,12 @@ transaction_t* find_empty_transaction_for_fd(int fd) {
     return &new_node->transaction; 
 }
 
+transaction_t* find_transaction_for_fd(int fd) {
+    if (trans->fd < 0) return;
+    transaction_node_t* node = NULL;
+    node = slots.transactions[trans->fd % MAXHASH];
+    while (node && node->fd != trans->fd) {
+        node = node->next;
+    }
+    return node;
+}
