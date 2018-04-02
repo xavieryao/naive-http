@@ -337,14 +337,15 @@ void parse_uri(char *uri, char *filename) {
 void send_resp_header(int efd, transaction_t* trans) {
     printf("send_resp_header\n");
     char filetype[MAXLINE];
+    int header_len;
 
     /* Send response headers to client */
     get_filetype(trans->filename, filetype);
-    snprintf(trans->write_buf, sizeof(trans->write_buf), "HTTP/1.0 200 OK\r\n");
-    snprintf(trans->write_buf, sizeof(trans->write_buf), "%sServer: Naive HTTP Server\r\n", trans->write_buf);
-    snprintf(trans->write_buf, sizeof(trans->write_buf), "%sConnection: close\r\n", trans->write_buf);
-    snprintf(trans->write_buf, sizeof(trans->write_buf), "%sContent-length: %d\r\n", trans->write_buf, trans->filesize);
-    snprintf(trans->write_buf, sizeof(trans->write_buf), "%sContent-type: %s\r\n\r\n", trans->write_buf, filetype);
+    header_len = snprintf(trans->write_buf, sizeof(trans->write_buf), "HTTP/1.0 200 OK\r\n");
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Server: Naive HTTP Server\r\n");
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Connection: close\r\n");
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Content-length: %d\r\n"trans->filesize);
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "%s", "Content-type: %s\r\n\r\n", filetype);
 
     trans->write_len = strlen(trans->write_buf);
     trans->next_stage = P_SEND_RESP_BODY;
@@ -540,24 +541,7 @@ void finish_transaction(int efd, transaction_t* trans) {
  */
 void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg) {
-    printf("client error %s %s %s\n", errnum, shortmsg, longmsg);
-    char read_buf[MAXLINE], body[MAXBUF];
 
-    /* Build the HTTP response body */
-    sprintf(body, "<html><title>Tiny Error</title>");
-    sprintf(body, "%s<body bgcolor=""ffffff"">\r\n", body);
-    sprintf(body, "%s%s: %s\r\n", body, errnum, shortmsg);
-    sprintf(body, "%s<p>%s: %s\r\n", body, longmsg, cause);
-    sprintf(body, "%s<hr><em>The Tiny Web server</em>\r\n", body);
-
-    /* Print the HTTP response */
-    sprintf(read_buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
-    rio_writen(fd, read_buf, strlen(read_buf));
-    sprintf(read_buf, "Content-type: text/html\r\n");
-    rio_writen(fd, read_buf, strlen(read_buf));
-    sprintf(read_buf, "Content-length: %d\r\n\r\n", (int) strlen(body));
-    rio_writen(fd, read_buf, strlen(read_buf));
-    rio_writen(fd, body, strlen(body));
 }
 
 void handle_protocol_event(int efd, transaction_t* trans) {
@@ -671,9 +655,22 @@ transaction_t* find_empty_transaction_for_fd(int fd) {
 }
 
 void handle_error(int efd, transaction_t* trans, char *cause, char *errnum, char *shortmsg, char *longmsg) {
-    // TODO: Remove fd from epoll
-    // TODO: Clean up trans
-    printf("Client error: %s %s %s %s\n", cause, errnum, shortmsg, longmsg);
+    printf("client error %s %s %s\n", errnum, shortmsg, longmsg);
+    /* Build the HTTP response body */
+    snprintf(trans->write_buf, sizeof(trans->writebuf), "<html><title>Tiny Error</title>");
+    snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<body bgcolor=""ffffff"">\r\n", body);
+    snprintf(trans->write_buf, sizeof(trans->writebuf), "%s%s: %s\r\n", body, errnum, shortmsg);
+    snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<p>%s: %s\r\n", body, longmsg, cause);
+    snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<hr><em>The Tiny Web server</em>\r\n", body);
+
+    /* Print the HTTP response */
+    sprintf(read_buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
+    rio_writen(fd, read_buf, strlen(read_buf));
+    sprintf(read_buf, "Content-type: text/html\r\n");
+    rio_writen(fd, read_buf, strlen(read_buf));
+    sprintf(read_buf, "Content-length: %d\r\n\r\n", (int) strlen(body));
+    rio_writen(fd, read_buf, strlen(read_buf));
+    rio_writen(fd, body, strlen(body));
     clienterror(trans->fd, cause, errnum, shortmsg, longmsg);
 }
 
