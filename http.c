@@ -148,7 +148,7 @@ void accept_connection(int fd, int efd) {
 void read_request_header(transaction_t* trans, int efd) {
     printf("read request header.\n");
     ssize_t count;
-    while (true) {
+    while (trans->read_pos <= MAXBUF-1) {
         count = read(trans->fd, trans->buf+trans->read_pos, MAXBUF-trans->read_pos);
         if (count < 0) {
             if (errno != EAGAIN) {
@@ -156,6 +156,7 @@ void read_request_header(transaction_t* trans, int efd) {
                 handle_error(efd, trans, "", "400", "Bad Request", "Failed to read request line & header");
                 return;
             } else { /* EAGAIN: done reading */
+                printf("EAGAIN.\n");
                 break;
             }
         } else if (count == 0) { /* Client closed connection */
@@ -174,11 +175,12 @@ void read_request_header(transaction_t* trans, int efd) {
     }
 
     /* Search for end of header "\r\n\r\n" */
+    printf("looking for end-of-header\n");
     const char header_tail[] = "\r\n\r\n";
     int header_tail_len = 4;
     int i;
     bool read_header_tail = false;
-    for (; (not (read_header_tail)) and (trans->parse_pos < trans->read_pos - header_tail_len); i++) {
+    for (trans->parse_pos=0; trans->parse_pos < trans->read_pos - header_tail_len; trans->parse_pos++) {
         read_header_tail = true;
         for (i = 0; i < header_tail_len; i ++) {
             if (trans->buf[trans->parse_pos+i] != header_tail[i]) {
@@ -186,15 +188,16 @@ void read_request_header(transaction_t* trans, int efd) {
                 continue;
             }
         }
+        if (read_header_tail) break;
     }
     if (not (read_header_tail)) {
         printf("Haven't read entire header.\n");
         return; /* haven't read the entire header */
     }
 
-    printf("read entire header.\n");
+    printf("read entire header at %d.\n", trans->parse_pos);
     /* parse request line and header */
-    if (sscanf("%s %s %s", trans->method, trans->uri, trans->version) != 3) {
+    if (sscanf(trans->buf, "%s %s %s", trans->method, trans->uri, trans->version) != 3) {
         handle_error(efd, trans, "", "400", "Bad Request", "Invalid request line");
         return;
     }
@@ -239,6 +242,7 @@ void read_request_header(transaction_t* trans, int efd) {
 
     /* Parse URI from request */
     parse_uri(trans->uri, trans->filename);
+    printf("done!\n");
 
 /* 
         if (stat(filename, &sbuf) < 0) {
