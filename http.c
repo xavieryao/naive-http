@@ -24,8 +24,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "error_handler.h"
 #include "rio.h"
 #include "socket_util.h"
+#include "transaction.h"
 
-static transaction_t transactions[MAXTRANSACTION];
 
 /* protocol related event-handlers */
 void handle_protocol_event(int efd, transaction_t* trans);

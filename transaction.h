@@ -60,7 +60,7 @@ typedef struct {
 
 /* transaction context management */
 void init_transaction(transaction_t* trans);
-void init_transaction_slots(int max);
+void init_transaction_slots();
 transaction_t* find_empty_transaction_for_fd(int fd);
 void remove_transaction_from_slots(transaction_t* trans);
 

@@ -14,7 +14,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <sys/epoll.h>
 #include "misc.h"
-#include "transaction.h"
 
 void handle_request(int fd, int listenfd, int efd);
 
