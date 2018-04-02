@@ -8,6 +8,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
+#include <stdlib.h>
 #include "transaction.h"
 
 static transaction_slots_t slots;
@@ -38,7 +39,7 @@ void remove_transaction_from_slots(transaction_t* trans) {
     if (trans->fd < 0) return;
     transaction_node_t* node = NULL, *prev = NULL;
     node = slots.transactions[trans->fd % MAXHASH];
-    while (node && node.transaction->fd != trans->fd) {
+    while (node && node->transaction->fd != trans->fd) {
         prev = node;
         node = node->next;
     }
@@ -65,11 +66,10 @@ transaction_t* find_empty_transaction_for_fd(int fd) {
 }
 
 transaction_t* find_transaction_for_fd(int fd) {
-    if (trans->fd < 0) return;
     transaction_node_t* node = NULL;
-    node = slots.transactions[trans->fd % MAXHASH];
-    while (node && node.transaction->fd != trans->fd) {
+    node = slots.transactions[fd % MAXHASH];
+    while (node && node->transaction->fd != fd) {
         node = node->next;
     }
-    return node;
+    return &node.transaction;
 }
