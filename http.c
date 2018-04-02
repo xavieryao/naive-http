@@ -655,25 +655,26 @@ transaction_t* find_empty_transaction_for_fd(int fd) {
 }
 
 void handle_error(int efd, transaction_t* trans, char *cause, char *errnum, char *shortmsg, char *longmsg) {
+    int n;
+    int body_len;
+    char body[MAXBUF];
     printf("client error %s %s %s\n", errnum, shortmsg, longmsg);
     /* Build the HTTP response body */
-    /*
-    snprintf(trans->write_buf, sizeof(trans->writebuf), "<html><title>Tiny Error</title>");
-    snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<body bgcolor=""ffffff"">\r\n", body);
-    snprintf(trans->write_buf, sizeof(trans->writebuf), "%s%s: %s\r\n", body, errnum, shortmsg);
-    snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<p>%s: %s\r\n", body, longmsg, cause);
-    snprintf(trans->write_buf, sizeof(trans->writebuf), "%s<hr><em>The Tiny Web server</em>\r\n", body);
-    */
+    body_len = snprintf(body+body_len, sizeof(body) - body_len, "<html><title>Tiny Error</title>");
+    body_len += snprintf(body+body_len, sizeof(body) - body_len, "<body bgcolor=""ffffff"">\r\n");
+    body_len += snprintf(body+body_len, sizeof(body) - body_len, "%s: %s\r\n", errnum, shortmsg);
+    body_len += snprintf(body+body_len, sizeof(body) - body_len, "<p>%s: %s\r\n", longmsg, cause);
+    body_len += snprintf(body+body_len, sizeof(body) - body_len, "<hr><em>The Tiny Web server</em>\r\n");
     /* Print the HTTP response */
-    /*
-    sprintf(read_buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
-    rio_writen(fd, read_buf, strlen(read_buf));
-    sprintf(read_buf, "Content-type: text/html\r\n");
-    rio_writen(fd, read_buf, strlen(read_buf));
-    sprintf(read_buf, "Content-length: %d\r\n\r\n", (int) strlen(body));
-    rio_writen(fd, read_buf, strlen(read_buf));
-    rio_writen(fd, body, strlen(body));
-    clienterror(trans->fd, cause, errnum, shortmsg, longmsg);
-    */
+    n = snprintf(trans->write_buf, sizeof(trans->write_buf), "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
+    n += snprintf(trans->write_buf + n, sizeof(trans->write_buf) - n, "Content-Type: text/html\r\n");
+    n += snprintf(trans->write_buf + n, sizeof(trans->write_buf) - n, "Content-Length: %d\r\n\r\n", body_len);
+    n += snprintf(trans->write_buf + n, sizeof(trans->write_buf) - n, "%s", body);
+
+    trans->write_len = n;
+    trans->state = S_WRITE;
+    trans->next_stage = P_DONE;
+    trans->write_pos = 0;
+    handle_transmission_event(efd, trans);
 }
 
