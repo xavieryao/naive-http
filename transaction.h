@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #ifndef NAIVE_HTTP_TRANS_H
 #define NAIVE_HTTP_TRANS_H
 #include <stdio.h>
+#include <stdbool.h>
 #include "http.h"
 #include "misc.h"
 
