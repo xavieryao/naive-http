@@ -487,7 +487,7 @@ void finish_transaction(int efd, transaction_t* trans) {
         if (fclose(trans->dest_file) != 0) {
             unix_error("fclose failed");
         }
-        if (trans->save_pos != trans->filesize && remove(trans->filename) == ERROR) { /* Remove created file */
+        if (trans->saved_pos != trans->filesize && remove(trans->filename) == ERROR) { /* Remove created file */
             unix_error("remove failed"); /* Just ignore. */
         }
     }
