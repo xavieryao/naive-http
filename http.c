@@ -549,6 +549,7 @@ void clienterror(int fd, char *cause, char *errnum,
 void handle_protocol_event(int efd, transaction_t* trans) {
     switch(trans->next_stage) {
         case P_READ_REQ_BODY:
+            serve_upload(efd, trans);
             break;
         case P_SEND_RESP_BODY:
             serve_download(efd, trans);
@@ -568,6 +569,7 @@ void handle_transmission_event(int efd, transaction_t* trans) {
             read_request_header(trans, efd);
             break;
         case S_READ:
+            read_n(efd, trans);
             break;
         case S_WRITE:
             write_all(efd, trans);
