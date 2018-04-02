@@ -20,6 +20,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #define OKAY 0
 #define ERROR -1
+#define INVALID_FD -1
 
 #define MAX_FILE_SIZE 1073741824 /* Only accept files smaller than 1GB */
 

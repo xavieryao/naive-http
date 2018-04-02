@@ -19,56 +19,78 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/errno.h>
+#include <sys/sendfile.h>
 #include "http.h"
 #include "error_handler.h"
 #include "rio.h"
 #include "socket_util.h"
 
-typedef enum {S_INVALID, S_READ_REQ_HEADER, S_SEND_RESP_HEADER, S_SEND_RESP_BODY, S_READ_REQ_BODY} trans_status_e;
+/* which state of transmission */
+typedef enum {S_INVALID, S_READ_REQ_HEADER, S_READ, S_WRITE, S_WRITE_FILE} trans_state_e;
+/* which stage of the protocol */
+typedef enum {P_INVALID, P_SEND_RESP_HEADER, P_SEND_RESP_BODY, P_READ_REQ_BODY, P_DONE} stage_e;
 
 typedef struct {
+    /* common field */
     int fd;
-    trans_status_e status;
+    trans_state_e state;
+    stage_e next_stage;
     int response_code;
-    int read_fd;
     int write_fd;
+    /* read from socket */
+    char read_buf[MAXBUF];
+    int read_len;
     int read_pos;
     int parse_pos;
+    /* write to socket */
+    char write_buf[MAXBUF];
+    int write_len;
     int write_pos;
-    int total_length;
+    int read_fd;
+    /* request header */
     int filesize;
-    char buf[MAXBUF];
     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE];
     enum {
         GET, POST, HEAD
     } methodtype;
     http_headers_t headers;
+    /* */
 } transaction_t;
 
 static transaction_t transactions[MAXTRANSACTION];
 
+/* protocol related event-handlers */
+void handle_protocol_event(int efd, transaction_t* trans);
+void serve_download(int efd, transaction_t* trans);
+void finish_transaction(int efd, transaction_t* trans);
 void accept_connection(int fd, int efd);
 void read_request_header(transaction_t* trans, int efd);
-void send_resp_header(transaction_t* trans);
+void send_resp_header(int efd, transaction_t* trans);
 void handle_error(int efd, transaction_t* trans, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
-
 void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
+
+/* transmission related event-handlers */
+void handle_transmission_event(int efd, transaction_t* trans);
+void write_all(int efd, transaction_t* trans);
+void write_file(int efd, transaction_t* trans);
+void read_all(int efd, transaction_t* trans);
+
+/* utility functions */
 int read_requesthdrs(rio_t *rp, http_headers_t *hdrs);
 void parse_uri(char *uri, char *filename);
-void serve_download(int fd, char *filename, int filesize);
 void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers);
 void get_filetype(char *filename, char *filetype);
 
+/* data structure related functions */
 void init_headers(http_headers_t *headers);
 void destroy_headers(http_headers_t *hdrs);
 void destroy_header_item(http_header_item_t *item);
 void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
 void init_transaction(transaction_t* trans);
-void cleanup_transaction(transaction_t* trans);
 transaction_t* find_empty_transaction_for_fd(int fd);
 
 /*
@@ -94,15 +116,7 @@ void handle_request(int fd, int listenfd, int efd) {
         app_error("transaction not found.");
         return;
     }
-    switch (trans->status) {
-        case S_READ_REQ_HEADER:
-            read_request_header(trans, efd);
-            break;
-        case S_SEND_RESP_HEADER:
-            break;
-        case S_SEND_RESP_BODY:
-            break;
-    }
+    handle_transmission_event(efd, trans);
     return;
 }
 
@@ -143,27 +157,28 @@ void accept_connection(int fd, int efd) {
         }
         init_transaction(slot);
         slot->fd = connfd;
-        slot->status = S_READ_REQ_HEADER;
+        slot->state = S_READ_REQ_HEADER;
     }
 }
+
+
 
 void read_request_header(transaction_t* trans, int efd) {
     printf("read request header.\n");
     ssize_t count;
     while (trans->read_pos <= MAXBUF-1) {
-        count = read(trans->fd, trans->buf+trans->read_pos, MAXBUF-trans->read_pos);
+        count = read(trans->fd, trans->read_buf+trans->read_pos, MAXBUF-trans->read_pos);
         if (count < 0) {
             if (errno != EAGAIN) {
                 unix_error("failed to read");
                 handle_error(efd, trans, "", "400", "Bad Request", "Failed to read request line & header");
                 return;
             } else { /* EAGAIN: done reading */
-                printf("EAGAIN.\n");
                 break;
             }
         } else if (count == 0) { /* Client closed connection */
             printf("client closed.\n");
-            cleanup_transaction(trans);
+            finish_transaction(trans);
             return;
         } else {
             printf("read %d bytes.\n", count);
@@ -185,7 +200,7 @@ void read_request_header(transaction_t* trans, int efd) {
     for (trans->parse_pos=0; trans->parse_pos < trans->read_pos - header_tail_len; trans->parse_pos++) {
         read_header_tail = true;
         for (i = 0; i < header_tail_len; i ++) {
-            if (trans->buf[trans->parse_pos+i] != header_tail[i]) {
+            if (trans->read_buf[trans->parse_pos+i] != header_tail[i]) {
                 read_header_tail = false;
                 continue;
             }
@@ -199,7 +214,7 @@ void read_request_header(transaction_t* trans, int efd) {
 
     printf("read entire header at %d.\n", trans->parse_pos);
     /* parse request line and header */
-    if (sscanf(trans->buf, "%s %s %s", trans->method, trans->uri, trans->version) != 3) {
+    if (sscanf(trans->read_buf, "%s %s %s", trans->method, trans->uri, trans->version) != 3) {
         handle_error(efd, trans, "", "400", "Bad Request", "Invalid request line");
         return;
     }
@@ -207,7 +222,7 @@ void read_request_header(transaction_t* trans, int efd) {
     char* tofree, *remain, *value_s, *key_s;
     int header_len = trans->parse_pos + header_tail_len;
     tofree = remain = calloc(sizeof(char), header_len + 1);
-    strncpy(tofree, trans->buf, header_len);
+    strncpy(tofree, trans->read_buf, header_len);
 
     strsep(&remain, "\r\n"); /* skip request line */
     while ((value_s = strsep(&remain, "\r\n")) != NULL) {
@@ -290,19 +305,19 @@ void read_request_header(transaction_t* trans, int efd) {
     switch (trans->methodtype) {
         case GET:
         case HEAD:
-            trans->status = S_SEND_RESP_HEADER;
+            trans->state = S_WRITE;
             event.data.fd = trans->fd;
             event.events = EPOLLOUT | EPOLLET;
             if (epoll_ctl(efd, EPOLL_CTL_MOD, trans->fd, &event) < 0) {
                 unix_error("epoll ctl");
             }
-            send_resp_header(trans);
+            send_resp_header(efd, trans);
             break;
         case POST:
             if (trans->read_pos == trans->parse_pos + 4) {
             // FIXME: All data have been read
             }
-            trans->status = S_READ_REQ_BODY;
+            trans->state = S_READ;
             break;
     }
 }
@@ -316,45 +331,77 @@ void parse_uri(char *uri, char *filename) {
         strcat(filename, "home.html");
 }
 
-void send_resp_header(transaction_t* trans) {
+void send_resp_header(int efd, transaction_t* trans) {
     char filetype[MAXLINE];
 
     /* Send response headers to client */
     get_filetype(trans->filename, filetype);
-    snprintf(trans->buf, sizeof(trans->buf), "HTTP/1.0 200 OK\r\n");
-    snprintf(trans->buf, sizeof(trans->buf), "%sServer: Naive HTTP Server\r\n", trans->buf);
-    snprintf(trans->buf, sizeof(trans->buf), "%sConnection: close\r\n", trans->buf);
-    snprintf(trans->buf, sizeof(trans->buf), "%sContent-length: %d\r\n", trans->buf, trans->filesize);
-    snprintf(trans->buf, sizeof(trans->buf), "%sContent-type: %s\r\n\r\n", trans->buf, filetype);
+    snprintf(trans->read_buf, sizeof(trans->read_buf), "HTTP/1.0 200 OK\r\n");
+    snprintf(trans->read_buf, sizeof(trans->read_buf), "%sServer: Naive HTTP Server\r\n", trans->read_buf);
+    snprintf(trans->read_buf, sizeof(trans->read_buf), "%sConnection: close\r\n", trans->read_buf);
+    snprintf(trans->read_buf, sizeof(trans->read_buf), "%sContent-length: %d\r\n", trans->read_buf, trans->filesize);
+    snprintf(trans->read_buf, sizeof(trans->read_buf), "%sContent-type: %s\r\n\r\n", trans->read_buf, filetype);
 
-    trans->total_length = strlen(trans->buf);
+    trans->write_len = strlen(trans->read_buf);
+    trans->next_stage = P_SEND_RESP_BODY;
+    handle_transmission_event(efd, trans);
 }
 
+void write_all(int efd, transaction_t* trans) {
+    ssize_t count;
+    while (trans->write_pos < trans->write_len) {
+        count = write(trans->fd, trans->write_buf, trans->write_len-trans->write_pos);
+        if (count < 0) {
+            if (count == EAGAIN) return; /* no more can be written */
+            else {
+                unix_error("write");
+                finish_transaction(trans);
+                return;
+            }
+        } else if (count == 0) { /* client closed socket */
+            printf("client closed.\n");
+            finish_transaction(trans);
+        } else {
+            printf("%d bytes written.\n", count);
+            trans->write_pos += count;
+        }
+    }
+    /* write task done! */
+    handle_protocol_event(efd, trans);
+}
+
+void write_file(int efd, transaction_t* trans) {
+    int rc;
+    while (trans->write_pos < trans->filesize) {
+        rc = sendfile(trans->fd, trans->read_fd, &trans->write_pos, trans->filesize - trans->write_pos);
+        if (rc < 0) {
+            if (errno != EAGAIN) {
+                unix_error("sendfile");
+                finish_transaction(trans);
+            }
+            return;
+        }
+    }
+    /* write done */
+    handle_protocol_event(efd, trans);
+}
 
 /*
  * serve_download - copy a file back to the client
  */
-void serve_download(int fd, char *filename, int filesize) {
-    int srcfd;
-    char *srcp, filetype[MAXLINE], buf[MAXBUF];
-
-    /* Send response headers to client */
-    get_filetype(filename, filetype);
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");
-    sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
-    sprintf(buf, "%sConnection: close\r\n", buf);
-    sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
-    sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype);
-    rio_writen(fd, buf, strlen(buf));
-    printf("Response headers:\n");
-    printf("%s", buf);
-
-    /* Send response body to client */
-    srcfd = open(filename, O_RDONLY, 0);
-    srcp = mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-    close(srcfd);
-    rio_writen(fd, srcp, filesize);
-    munmap(srcp, filesize);
+void serve_download(int efd, transaction_t*trans) {
+    int fd;
+    fd = open(trans->filename, O_READONLY, 0);
+    if (fd < 0) {
+        unix_error("open file");
+        handle_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot open file");
+        return;
+    }
+    trans->write_pos = 0;
+    trans->read_fd = fd;
+    trans->state = S_WRITE_FILE;
+    trans->next_stage = P_DONE;
+    handle_transmission_event(efd, trans);
 }
 
 void serve_upload(int fd, rio_t* rio, char *filename, http_headers_t* headers) {
@@ -461,13 +508,29 @@ void get_filetype(char *filename, char *filetype) {
         strcpy(filetype, "text/plain");
 }
 
+void finish_transaction(int efd, transaction_t* trans) {
+    epoll_event_t event;
+    event.data.fd = trans->fd;
+    epoll_ctl(efd, EPOLL_CTL_DEL, trans->fd, NULL);
+
+    if (close(trans->fd) < 0) {
+        unix_error("close socket");
+    }
+    if (trans->write_fd > 0 && close(trans->write_fd) < 0) {
+        unix_error("close write fd");
+    }
+    if (trans->read_fd > 0 && close(trans->read_fd) < 0) {
+        unix_error("close read fd");
+    }
+}
+
 /*
  * clienterror - returns an error message to the client
  */
 void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg) {
     printf("client error %s %s %s\n", errnum, shortmsg, longmsg);
-    char buf[MAXLINE], body[MAXBUF];
+    char read_buf[MAXLINE], body[MAXBUF];
 
     /* Build the HTTP response body */
     sprintf(body, "<html><title>Tiny Error</title>");
@@ -477,13 +540,44 @@ void clienterror(int fd, char *cause, char *errnum,
     sprintf(body, "%s<hr><em>The Tiny Web server</em>\r\n", body);
 
     /* Print the HTTP response */
-    sprintf(buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
-    rio_writen(fd, buf, strlen(buf));
-    sprintf(buf, "Content-type: text/html\r\n");
-    rio_writen(fd, buf, strlen(buf));
-    sprintf(buf, "Content-length: %d\r\n\r\n", (int) strlen(body));
-    rio_writen(fd, buf, strlen(buf));
+    sprintf(read_buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
+    rio_writen(fd, read_buf, strlen(read_buf));
+    sprintf(read_buf, "Content-type: text/html\r\n");
+    rio_writen(fd, read_buf, strlen(read_buf));
+    sprintf(read_buf, "Content-length: %d\r\n\r\n", (int) strlen(body));
+    rio_writen(fd, read_buf, strlen(read_buf));
     rio_writen(fd, body, strlen(body));
+}
+
+void handle_protocol_event(int efd, transaction_t* trans) {
+    switch(trans->next_stage) {
+        case P_READ_REQ_BODY:
+            break;
+        case P_SEND_RESP_BODY:
+            serve_download(efd, trans);
+            break;
+        case P_SEND_RESP_HEADER:
+            send_resp_header(efd, trans);
+            break;
+        case P_DONE:
+            break;
+    }
+}
+
+void handle_transmission_event(int efd, transaction_t* trans) {
+    switch (trans->state) {
+        case S_READ_REQ_HEADER:
+            read_request_header(trans, efd);
+            break;
+        case S_READ:
+            break;
+        case S_WRITE:
+            write_all(efd, trans);
+            break;
+        case S_WRITE_FILE:
+            write_file(efd, trans);
+            break;
+    }
 }
 
 /*
@@ -528,10 +622,12 @@ void destroy_header_item(http_header_item_t *item) {
 }
 
 void init_transaction(transaction_t* trans) {
-    trans->fd = -1;
-    trans->read_fd = -1;
+    trans->fd = INVALID_FD;
+    trans->read_fd = INVALID_FD;
+    trans->write_fd = INVALID_FD;
     trans->filesize = 0;
-    trans->status = S_INVALID;
+    trans->state = S_INVALID;
+    trans->next_stage = P_INVALID;
     trans->read_pos = 0;
     trans->write_pos = 0;
     trans->parse_pos = 0;
@@ -561,6 +657,3 @@ void handle_error(int efd, transaction_t* trans, char *cause, char *errnum, char
     clienterror(trans->fd, cause, errnum, shortmsg, longmsg);
 }
 
-void cleanup_transaction(transaction_t* trans) {
-    // TODO: Implement
-}
