@@ -56,7 +56,7 @@ typedef struct _transaction_node {
 typedef struct {
     int n;
     transaction_node_t* transactions[MAXHASH];
-} transactoin_slots_t; 
+} transaction_slots_t; 
 
 /* transaction context management */
 void init_transaction(transaction_t* trans);
