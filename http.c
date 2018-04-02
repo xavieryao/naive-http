@@ -39,16 +39,16 @@ typedef struct {
     int write_fd;
     /* read from socket */
     char read_buf[MAXBUF];
-    int read_len;
-    int read_pos;
-    int parse_pos;
+    long read_len;
+    long read_pos;
+    long parse_pos;
     /* write to socket */
     char write_buf[MAXBUF];
-    int write_len;
-    int write_pos;
+    long write_len;
+    long write_pos;
     int read_fd;
     /* request header */
-    int filesize;
+    long filesize;
     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE];
     enum {
@@ -178,7 +178,7 @@ void read_request_header(transaction_t* trans, int efd) {
             }
         } else if (count == 0) { /* Client closed connection */
             printf("client closed.\n");
-            finish_transaction(trans);
+            finish_transaction(efd, trans);
             return;
         } else {
             printf("read %d bytes.\n", count);
@@ -355,12 +355,12 @@ void write_all(int efd, transaction_t* trans) {
             if (count == EAGAIN) return; /* no more can be written */
             else {
                 unix_error("write");
-                finish_transaction(trans);
+                finish_transaction(efd, trans);
                 return;
             }
         } else if (count == 0) { /* client closed socket */
             printf("client closed.\n");
-            finish_transaction(trans);
+            finish_transaction(efd, trans);
         } else {
             printf("%d bytes written.\n", count);
             trans->write_pos += count;
@@ -377,7 +377,7 @@ void write_file(int efd, transaction_t* trans) {
         if (rc < 0) {
             if (errno != EAGAIN) {
                 unix_error("sendfile");
-                finish_transaction(trans);
+                finish_transaction(efd, trans);
             }
             return;
         }
