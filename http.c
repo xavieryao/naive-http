@@ -24,7 +24,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "rio.h"
 #include "socket_util.h"
 
-typedef enum {S_INVALID, S_READ_REQ_HEADER, S_SEND_RESP_HEADER, S_SEND_RESP_BODY} trans_status_e;
+typedef enum {S_INVALID, S_READ_REQ_HEADER, S_SEND_RESP_HEADER, S_SEND_RESP_BODY, S_READ_REQ_BODY} trans_status_e;
 
 typedef struct {
     int fd;
@@ -36,6 +36,7 @@ typedef struct {
     int parse_pos;
     int write_pos;
     int total_length;
+    int filesize;
     char buf[MAXBUF];
     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE];
@@ -49,6 +50,7 @@ static transaction_t transactions[MAXTRANSACTION];
 
 void accept_connection(int fd, int efd);
 void read_request_header(transaction_t* trans, int efd);
+void send_resp_header(transaction_t* trans);
 void handle_error(int efd, transaction_t* trans, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
@@ -148,7 +150,7 @@ void accept_connection(int fd, int efd) {
 void read_request_header(transaction_t* trans, int efd) {
     printf("read request header.\n");
     ssize_t count;
-    while (true) {
+    while (trans->read_pos <= MAXBUF-1) {
         count = read(trans->fd, trans->buf+trans->read_pos, MAXBUF-trans->read_pos);
         if (count < 0) {
             if (errno != EAGAIN) {
@@ -156,6 +158,7 @@ void read_request_header(transaction_t* trans, int efd) {
                 handle_error(efd, trans, "", "400", "Bad Request", "Failed to read request line & header");
                 return;
             } else { /* EAGAIN: done reading */
+                printf("EAGAIN.\n");
                 break;
             }
         } else if (count == 0) { /* Client closed connection */
@@ -174,11 +177,12 @@ void read_request_header(transaction_t* trans, int efd) {
     }
 
     /* Search for end of header "\r\n\r\n" */
+    printf("looking for end-of-header\n");
     const char header_tail[] = "\r\n\r\n";
     int header_tail_len = 4;
     int i;
     bool read_header_tail = false;
-    for (; (not (read_header_tail)) and (trans->parse_pos < trans->read_pos - header_tail_len); i++) {
+    for (trans->parse_pos=0; trans->parse_pos < trans->read_pos - header_tail_len; trans->parse_pos++) {
         read_header_tail = true;
         for (i = 0; i < header_tail_len; i ++) {
             if (trans->buf[trans->parse_pos+i] != header_tail[i]) {
@@ -186,15 +190,16 @@ void read_request_header(transaction_t* trans, int efd) {
                 continue;
             }
         }
+        if (read_header_tail) break;
     }
     if (not (read_header_tail)) {
         printf("Haven't read entire header.\n");
         return; /* haven't read the entire header */
     }
 
-    printf("read entire header.\n");
+    printf("read entire header at %d.\n", trans->parse_pos);
     /* parse request line and header */
-    if (sscanf("%s %s %s", trans->method, trans->uri, trans->version) != 3) {
+    if (sscanf(trans->buf, "%s %s %s", trans->method, trans->uri, trans->version) != 3) {
         handle_error(efd, trans, "", "400", "Bad Request", "Invalid request line");
         return;
     }
@@ -240,67 +245,67 @@ void read_request_header(transaction_t* trans, int efd) {
     /* Parse URI from request */
     parse_uri(trans->uri, trans->filename);
 
-/* 
-        if (stat(filename, &sbuf) < 0) {
-            destroy_headers(&headers);
-            clienterror(fd, filename, "404", "Not found",
-                        "Tiny couldn't find this file");
+    /* Check file */
+    struct stat sbuf;
+    if (trans->methodtype == GET || trans->methodtype == HEAD) {
+        if (stat(trans->filename, &sbuf) < 0) {
+            handle_error(efd, trans, trans->filename, "404", "Not found",
+                        "Naive server couldn't find this file");
             return;
         }
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
-            destroy_headers(&headers);
-            clienterror(fd, filename, "403", "Forbidden",
-                        "Tiny couldn't read the file");
+            handle_error(efd, trans, trans->filename, "403", "Forbidden",
+                        "Naive server couldn't read the file");
             return;
         }
-        if (methodtype == GET) {
-            serve_download(fd, filename, sbuf.st_size);
-        } else if (methodtype == HEAD) {
-            // FIXME not implemented
-        }
-        */
-}
-
-/*
- * read_requesthdrs - read HTTP request headers
- * return: 0 ok  -1 error
- */
-int read_requesthdrs(rio_t *rp, http_headers_t *hdrs) {
-    printf("Read request hdrs\n");
-
-    char buf[MAXLINE];
-    char *key_s, *value_s, *to_free;
-    http_header_item_t *item = NULL;
-
-    while (true) {
-        if (rio_readlineb(rp, buf, MAXLINE) <= 0) return ERROR;
-        if (strcmp(buf, "\r\n") == 0) break;
-
-        to_free = value_s = strdup(buf);
-        key_s = strsep(&value_s, ": ");
-
-        size_t value_len = strlen(value_s);
-        if (value_len < 3 || !(value_s[0] == ' ' && value_s[value_len - 1] == '\n' && value_s[value_len - 2] == '\r')) {
-            free(to_free);
-            return ERROR;
-        }
-        value_s += 1; // value_s points to the sp of ': ', move to the beginning.
-
-        value_s[value_len - 3] = '\0'; // trim '\r\n'
-
-        item = (http_header_item_t *) malloc(sizeof(http_header_item_t));
-        strncpy(item->key, key_s, MAXLINE);
-        strncpy(item->value, value_s, MAXLINE);
-
-        printf("KEY[%s] VALUE[%s]\n", item->key, item->value);
-
-        append_header(hdrs, item);
-        free(to_free);
+        trans->filesize = sbuf.st_size;
     }
-    printf("okay\n");
-    return OKAY;
-}
+    /* check post header */
+    int content_len = -1;
+    if (trans->methodtype == POST) {
+        http_header_item_t* hdr_item = trans->headers.head;
+        while (hdr_item != NULL) {
+            if (strcmp(hdr_item->key, "Content-Length") == 0) {
+                content_len = strtol(hdr_item->value, NULL, 10);
+                if (errno) {
+                    unix_error("strtol failed");
+                    content_len = -1;
+                }
+                break;
+            }
+            hdr_item = hdr_item->next;
+        }
+        if (content_len <= 0) {
+            handle_error(efd, trans, trans->filename, "400", "Bad Request", "Content-Length must be provided and be positive.");
+            return;
+        }
+        if (content_len > MAX_FILE_SIZE) {
+            handle_error(efd, trans, trans->filename, "400", "Bad Request", "File larger than limit.");
+            return;
+        }
+    }
 
+    /* transfer state */
+    epoll_event_t event;
+    switch (trans->methodtype) {
+        case GET:
+        case HEAD:
+            trans->status = S_SEND_RESP_HEADER;
+            event.data.fd = trans->fd;
+            event.events = EPOLLOUT | EPOLLET;
+            if (epoll_ctl(efd, EPOLL_CTL_MOD, trans->fd, &event) < 0) {
+                unix_error("epoll ctl");
+            }
+            send_resp_header(trans);
+            break;
+        case POST:
+            if (trans->read_pos == trans->parse_pos + 4) {
+            // FIXME: All data have been read
+            }
+            trans->status = S_READ_REQ_BODY;
+            break;
+    }
+}
 /*
  * parse_uri - parse URI into filename
  */
@@ -310,6 +315,21 @@ void parse_uri(char *uri, char *filename) {
     if (uri[strlen(uri) - 1] == '/')
         strcat(filename, "home.html");
 }
+
+void send_resp_header(transaction_t* trans) {
+    char filetype[MAXLINE];
+
+    /* Send response headers to client */
+    get_filetype(trans->filename, filetype);
+    snprintf(trans->buf, sizeof(trans->buf), "HTTP/1.0 200 OK\r\n");
+    snprintf(trans->buf, sizeof(trans->buf), "%sServer: Naive HTTP Server\r\n", trans->buf);
+    snprintf(trans->buf, sizeof(trans->buf), "%sConnection: close\r\n", trans->buf);
+    snprintf(trans->buf, sizeof(trans->buf), "%sContent-length: %d\r\n", trans->buf, trans->filesize);
+    snprintf(trans->buf, sizeof(trans->buf), "%sContent-type: %s\r\n\r\n", trans->buf, filetype);
+
+    trans->total_length = strlen(trans->buf);
+}
+
 
 /*
  * serve_download - copy a file back to the client
@@ -510,6 +530,7 @@ void destroy_header_item(http_header_item_t *item) {
 void init_transaction(transaction_t* trans) {
     trans->fd = -1;
     trans->read_fd = -1;
+    trans->filesize = 0;
     trans->status = S_INVALID;
     trans->read_pos = 0;
     trans->write_pos = 0;
