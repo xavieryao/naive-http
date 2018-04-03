@@ -228,7 +228,7 @@ void read_request_header(transaction_t* trans, int efd) {
         }
     }
     if (slash_cnt > 1) { /* File cannot be in subdir */
-        client_error(efd, trans, trans->filename, "403", "Forbidden", "File cannot be located in a directory.")
+        client_error(efd, trans, trans->filename, "403", "Forbidden", "File cannot be located in a directory.");
         return;
     }
 
