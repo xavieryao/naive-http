@@ -460,7 +460,7 @@ void serve_upload(int efd, transaction_t* trans) {
         lock.l_whence = SEEK_SET;
         lock.l_start = 0;
         lock.l_len = 0;
-        if (fcntl(fd, F_SETLK, &lock) == -1) {
+        if (fcntl(trans->write_fd, F_SETLK, &lock) == -1) {
             if (errno == EACCES || errno == EAGAIN) {
                 /* lock failed */
                 client_error(efd, trans, trans->filename, "503", "Service Unavaliable", "File is being read/written.");
