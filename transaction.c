@@ -12,6 +12,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "transaction.h"
 
 static transaction_slots_t slots;
+static transaction_queue_t queue;
+
+static void append_front(transaction_node_t* node);
+static void append_back(transaction_node_t* node);
+static void remove_from_queue(transaction_node_t* node);
 
 void init_transaction(transaction_t* trans) {
     trans->fd = INVALID_FD;
@@ -25,6 +30,7 @@ void init_transaction(transaction_t* trans) {
     trans->write_pos = 0;
     trans->parse_pos = 0;
     trans->saved_pos = 0;
+    trans->last_accessed = time(NULL);
     init_headers(&trans->headers);
 }
 
@@ -33,6 +39,9 @@ void init_transaction_slots() {
     for (i = 0; i < MAXHASH; i++) {
         slots.transactions[i] = NULL;
     }
+    queue.n = 0;
+    queue.newest = NULL;
+    queue.oldest = NULL;
 }
 
 void remove_transaction_from_slots(transaction_t* trans) {
@@ -44,6 +53,7 @@ void remove_transaction_from_slots(transaction_t* trans) {
         node = node->next;
     }
     if (node) {
+        remove_from_queue(node);
         if (prev) prev->next = node->next;
         else slots.transactions[trans->fd % MAXHASH] = NULL; 
         free(node);
@@ -63,6 +73,9 @@ transaction_t* find_empty_transaction_for_fd(int fd) {
     if (prev) prev->next = new_node;
     else slots.transactions[fd % MAXHASH] = new_node;
     new_node->next = NULL;
+    new_node->slot = &slots.transactions[fd % MAXHASH];
+    new_node->newer = NULL;
+    new_node->older = NULL;
     return &new_node->transaction; 
 }
 
@@ -75,6 +88,33 @@ transaction_t* find_transaction_for_fd(int fd) {
     return &node->transaction;
 }
 
-void increment_transaction_count() {
+void add_transaction(transaction_t* trans) {
     slots.n += 1;
+    append_front(trans->node);
+}
+
+static void append_front(transaction_node_t* node) {
+    if (queue.newest) queue.newest.newer = node;
+    node->older = queue.newest;
+    node->newer = NULL;
+    queue.newest = node;
+    if (queue.n == 0) {
+        queue.oldest = node;
+    }
+    queue.n ++;
+}
+
+static void remove_from_queue(transaction_node_t* node) {
+    if (node->newer) node->newer->older = node->older;
+    if (node->older) node->older->newer = node->newer;
+    queue.n --;
+    if (queue.n == 0) {
+        queue.newest = queue.oldest = NULL;
+    }
+}
+
+void update_access(transaction_node_t* node) {
+    node->last_accessed = time(NULL);
+    remove_from_queue(node);
+    append_front(node);
 }

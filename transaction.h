@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define NAIVE_HTTP_TRANS_H
 #include <stdio.h>
 #include <stdbool.h>
+#include <time.h>
 #include "http.h"
 #include "misc.h"
 
@@ -19,12 +20,15 @@ typedef enum {S_INVALID, S_READ_REQ_HEADER, S_READ, S_WRITE, S_WRITE_FILE} trans
 /* which stage of the protocol */
 typedef enum {P_INVALID, P_SEND_RESP_HEADER, P_SEND_RESP_BODY, P_READ_REQ_BODY, P_DONE} stage_e;
 
+struct _transaction_node;
 typedef struct {
     /* common field */
     int fd;
     trans_state_e state;
     stage_e next_stage;
     int response_code;
+    time_t last_accessed;
+    struct _transaction_node* node;
     /* read from socket */
     char read_buf[MAXBUF];
     long read_len;
@@ -51,21 +55,31 @@ typedef struct {
 
 typedef struct _transaction_node {
     transaction_t transaction;
+    struct _transaction_node** slot;
     struct _transaction_node* next;
+    struct _transaction_node* newer;
+    struct _transaction_node* older;
 } transaction_node_t; /* Linked-list node */
 
 typedef struct {
     int n;
     transaction_node_t* transactions[MAXHASH];
-} transaction_slots_t; 
+} transaction_slots_t;
+
+typedef struct {
+    int n;
+    transaction_node_t* newest; /* newest */
+    transaction_node_t* oldest; /* oldest */
+} transaction_queue_t;
 
 /* transaction context management */
 void init_transaction(transaction_t* trans);
 void init_transaction_slots();
-void increment_transaction_count();
+void add_transaction(transaction_t* trans);
 transaction_t* find_empty_transaction_for_fd(int fd);
 transaction_t* find_transaction_for_fd(int fd);
 void remove_transaction_from_slots(transaction_t* trans);
 void init_headers(http_headers_t *headers);
+void update_access(transaction_node_t* node);
 
 #endif //NAIVE_HTTP_TRANS_H

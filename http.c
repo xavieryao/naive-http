@@ -71,6 +71,7 @@ void handle_request(int fd, int listenfd, int efd) {
         app_error("transaction not found.");
         return;
     }
+    update_access(trans);
     handle_transmission_event(efd, trans);
     return;
 }
@@ -116,6 +117,7 @@ void accept_connection(int fd, int efd) {
             return;
         }
         init_transaction(slot);
+        add_transaction();
         slot->fd = connfd;
         slot->state = S_READ_REQ_HEADER;
     }
