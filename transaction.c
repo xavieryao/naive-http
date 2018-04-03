@@ -61,8 +61,15 @@ void remove_transaction_from_slots(transaction_t* trans) {
     }
 }
 
-transaction_t* find_empty_transaction_for_fd(int fd) {
-    if (slots.n > MAXTRANSACTION) return NULL;
+transaction_t* find_empty_transaction_for_fd(int efd, int fd) {
+    if (slots.n > MAXTRANSACTION) { 
+        if (queue.oldest && (time(NULL) - queue.oldest->transaction.last_accessed) > TIMEOUT) {
+            /* kick out timed-out transactions */
+            finish_transaction(efd, &queue.oldest->transaction);
+        } else { /* maximum connection exceeded */
+            return NULL;
+        }
+    }
     transaction_node_t* node = slots.transactions[fd % MAXHASH];
     transaction_node_t* prev = node;
     while (node != NULL) {
@@ -110,6 +117,7 @@ static void append_front(transaction_node_t* node) {
 static void remove_from_queue(transaction_node_t* node) {
     if (node->newer) node->newer->older = node->older;
     if (node->older) node->older->newer = node->newer;
+    if (queue.oldest == node) queue.oldest = node->newer;
     queue.n --;
     if (queue.n == 0) {
         queue.newest = queue.oldest = NULL;

@@ -76,7 +76,7 @@ typedef struct {
 void init_transaction(transaction_t* trans);
 void init_transaction_slots();
 void add_transaction(transaction_t* trans);
-transaction_t* find_empty_transaction_for_fd(int fd);
+transaction_t* find_empty_transaction_for_fd(int efd, int fd);
 transaction_t* find_transaction_for_fd(int fd);
 void remove_transaction_from_slots(transaction_t* trans);
 void init_headers(http_headers_t *headers);

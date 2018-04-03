@@ -111,7 +111,7 @@ void accept_connection(int fd, int efd) {
             return;
         }
 
-        transaction_t* slot = find_empty_transaction_for_fd(connfd);
+        transaction_t* slot = find_empty_transaction_for_fd(efd, connfd);
         if (slot == NULL) {
             close(connfd); /* Reached transaction limit */
             return;

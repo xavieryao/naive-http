@@ -14,16 +14,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 /* miscellaneous constants */
 #define MAXLINE 1024 /* maximum line length */
-#define MAXBUF 10240 /* maximum buffer size */
+#define MAXBUF 40960 /* maximum buffer size */
 #define MAXEVENT 64 /* maximum epoll event */
 #define MAXTRANSACTION 1024 /* maximum transaction */
 #define MAXHASH 4096 /* hash map size */
+
+#define TIMEOUT 100 /* transaction time out time, in seconds */
 
 #define OKAY 0
 #define ERROR -1
 #define INVALID_FD -1
 
-#define MAX_FILE_SIZE 1073741824 /* Only accept files smaller than 1GB */
+#define MAX_FILE_SIZE 1073741824 /* Only accept files smaller than 1GiB */
 
 #define MIN(X,Y) X<Y ? X : Y
 #define MAX(X,Y) X>=Y ? X : Y
