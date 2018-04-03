@@ -45,6 +45,7 @@ void remove_transaction_from_slots(transaction_t* trans) {
     }
     if (node) {
         if (prev) prev->next = node->next;
+        else slots.transactions[trans->fd % MAXHASH] = NULL; 
         free(node);
         slots.n -= 1;
     }
@@ -72,4 +73,8 @@ transaction_t* find_transaction_for_fd(int fd) {
         node = node->next;
     }
     return &node->transaction;
+}
+
+void increment_transaction_count() {
+    slots.n += 1;
 }
