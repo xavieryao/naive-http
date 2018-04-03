@@ -417,7 +417,7 @@ void serve_download(int efd, transaction_t*trans) {
 
     /* add read lock */
     /* file size is not changed. This function is called directly after filesize is set. No writting. */
-    struct flock lock;
+    struct flock lock = {};
     lock.l_whence = SEEK_SET;
     lock.l_start = 0;
     lock.l_len = 0;
@@ -459,7 +459,7 @@ void serve_upload(int efd, transaction_t* trans) {
         * Permission: only owner can read/write.
         *
         */
-        struct flock lock;
+        struct flock lock = {};
         lock.l_start = 0;
         lock.l_whence = SEEK_SET;
         lock.l_start = 0;
@@ -543,7 +543,7 @@ void finish_transaction(int efd, transaction_t* trans) {
     printf("finish transaction\n");
 
     int active_fd = INVALID_FD;
-    struct flock lock;
+    struct flock lock = {};
     lock.l_whence = SEEK_SET;
     lock.l_start = 0;
     lock.l_len = 0;
