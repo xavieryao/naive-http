@@ -459,11 +459,6 @@ void serve_upload(int efd, transaction_t* trans) {
         * Permission: only owner can read/write.
         *
         */
-        struct flock lock = {};
-        lock.l_start = 0;
-        lock.l_whence = SEEK_SET;
-        lock.l_start = 0;
-        lock.l_len = 0;
         trans->write_fd = open(trans->filename, O_WRONLY | O_CREAT /*| O_EXLOCK*/, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
         if (trans->write_fd <= 0) {
             unix_error("Could not open file.");
@@ -471,19 +466,7 @@ void serve_upload(int efd, transaction_t* trans) {
             return;
         }
         /* add write lock */
-        if (fcntl(trans->write_fd, F_GETLK, &lock) == -1) {
-            unix_error("get lock failed");
-            client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire write lock.");
-        }
-        if (lock.l_type != F_UNLCK) {
-            client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire write lock.");
-        }
-        lock.l_type = F_WRLCK;
-        lock.l_start = 0;
-        lock.l_whence = SEEK_SET;
-        lock.l_start = 0;
-        lock.l_len = 0;
-        if (fcntl(trans->write_fd, F_SETLK, &lock) == -1) {
+        if (flock(trans->write_fd, F_SETLK, &lock) == -1) {
             if (errno == EACCES || errno == EAGAIN) {
                 /* lock failed */
                 client_error(efd, trans, trans->filename, "503", "Service Unavaliable", "File is being read/written.");
