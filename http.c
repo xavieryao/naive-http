@@ -368,10 +368,8 @@ void read_n(int efd, transaction_t* trans) {
             if (errno != EAGAIN) {
                 unix_error("read");
                 finish_transaction(efd, trans);
-                return;
-            } else {
-                break; /* EAGAIN: no more to read */
             }
+            return; /* EAGAIN: no more */
         } else if (count == 0) {
             /* client closed socket. */
             printf("client closed.\n");
