@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
         for (i = 0; i < n; i++) {
             if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
                 app_error("epoll error");
-                close(events[i].data.fd); // TODO error handler
+                handle_epoll_error(events[i].data.fd); // TODO error handler
                 continue;
             }
             handle_request(events[i].data.fd, listenfd, efd);

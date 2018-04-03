@@ -66,7 +66,6 @@ void handle_request(int fd, int listenfd, int efd) {
         // Accept socket
         return;
     }
-    int i;
     transaction_t* trans = find_transaction_for_fd(fd);
     if (trans == NULL) {
         app_error("transaction not found.");
@@ -89,7 +88,11 @@ void accept_connection(int fd, int efd) {
             if (not (errno == EAGAIN || errno == EWOULDBLOCK)) {
                 unix_error("accept");
             }
-            break;
+            /* 
+             * No need to handle EPROTO or ECONNABORTED, as in UNP.
+             * Just wait until next connection.
+             */
+            return;
         }
 
         if (set_nonblocking(connfd) == ERROR) {
@@ -598,3 +601,12 @@ void client_error(int efd, transaction_t* trans, char *cause, char *errnum, char
     handle_transmission_event(efd, trans);
 }
 
+void handle_epoll_error(int fd, int efd) {
+    transaction_t* trans = find_transaction_for_fd(fd);
+    if (trans == NULL) {
+        if (close(fd) < 0) unix_error("epoll error, close fd");
+        return;
+    } else {
+        finish_transaction(efd, trans);
+    }
+}
