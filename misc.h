@@ -30,10 +30,20 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define MIN(X,Y) X<Y ? X : Y
 #define MAX(X,Y) X>=Y ? X : Y
 
-#define DEBUG
+#ifndef NDEBUG
+#  define debug_print(msg) stderr_printf msg
+#else
+#  define debug_print(msg) (void)0
+#endif
 
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) fprintf(stderr, fmt, __VA_ARGS__); } while (0)
+void
+stderr_printf(const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+}
 
 /* struct aliases */
 typedef struct sockaddr SA;
