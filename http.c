@@ -178,6 +178,7 @@ void read_request_header(transaction_t* trans, int efd) {
         client_error(efd, trans, "", "400", "Bad Request", "Invalid request line");
         return;
     }
+
     printf("Request line: [%s] [%s] [%s]\n", trans->method, trans->uri, trans->version);
     char* tofree, *remain, *value_s, *key_s;
     int header_len = trans->parse_pos + header_tail_len;
@@ -210,7 +211,7 @@ void read_request_header(transaction_t* trans, int efd) {
 
     if (strcasecmp(trans->method, "GET") == 0) trans->methodtype = GET;
     else if (strcasecmp(trans->method, "POST") == 0) trans->methodtype = POST;
-    else if (strcasecmp(trans->method, "HEAD") == 0) trans->methodtype = HEAD;
+    // else if (strcasecmp(trans->method, "HEAD") == 0) trans->methodtype = HEAD;
     else {
         client_error(efd, trans, trans->method, "501", "Not Implemented",
                     "Naive server does not implement this method");
@@ -219,6 +220,18 @@ void read_request_header(transaction_t* trans, int efd) {
 
     /* Parse URI from request */
     parse_uri(trans->uri, trans->filename);
+    int slash_cnt = 0;
+    int filename_len = strlen(trans->filename);
+    for (i = 0; i < filename_len; i++) {
+        if (trans->filename[i] == '/') {
+            slash_cnt += 1;
+        }
+    }
+    if (slash_cnt > 1) { /* File cannot be in subdir */
+        client_error(efd, trans, trans->filename, "403", "Forbidden", "File cannot be located in a directory.")
+        return;
+    }
+
 
     /* Check file */
     struct stat sbuf;
