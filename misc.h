@@ -30,11 +30,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define MIN(X,Y) X<Y ? X : Y
 #define MAX(X,Y) X>=Y ? X : Y
 
-#ifndef NDEBUG
-#  define debug_print(msg) stderr_printf msg
-#else
-#  define debug_print(msg) (void)0
-#endif
 
 void
 stderr_printf(const char *fmt, ...)
