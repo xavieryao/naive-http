@@ -408,7 +408,6 @@ void read_n(int efd, transaction_t* trans) {
 void serve_download(int efd, transaction_t*trans) {
     printf("serve download\n");
     int fd;
-    struct flock lock;
     fd = open(trans->filename, O_RDONLY, 0);
     if (fd < 0) {
         unix_error("open file");
@@ -418,6 +417,10 @@ void serve_download(int efd, transaction_t*trans) {
 
     /* add read lock */
     /* file size is not changed. This function is called directly after filesize is set. No writting. */
+    struct flock lock;
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;
     if (fcntl(fd, F_GETLK, &lock) == -1) {
         unix_error("get lock failed");
         client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire read lock.");
@@ -457,6 +460,10 @@ void serve_upload(int efd, transaction_t* trans) {
         *
         */
         struct flock lock;
+        lock.l_start = 0;
+        lock.l_whence = SEEK_SET;
+        lock.l_start = 0;
+        lock.l_len = 0;
         trans->write_fd = open(trans->filename, O_WRONLY | O_CREAT /*| O_EXLOCK*/, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
         if (trans->write_fd <= 0) {
             unix_error("Could not open file.");
@@ -472,6 +479,7 @@ void serve_upload(int efd, transaction_t* trans) {
             client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire write lock.");
         }
         lock.l_type = F_WRLCK;
+        lock.l_start = 0;
         lock.l_whence = SEEK_SET;
         lock.l_start = 0;
         lock.l_len = 0;
@@ -537,6 +545,7 @@ void finish_transaction(int efd, transaction_t* trans) {
     int active_fd = INVALID_FD;
     struct flock lock;
     lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
     lock.l_len = 0;
     lock.l_type = F_UNLCK;
 
