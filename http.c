@@ -421,7 +421,7 @@ void serve_download(int efd, transaction_t*trans) {
     lock.l_whence = SEEK_SET;
     lock.l_start = 0;
     lock.l_len = 0;
-    if (fcntl(fd, F_OFD_GETLK, &lock) == -1) {
+    if (fcntl(fd, F_GETLK, &lock) == -1) {
         unix_error("get lock failed");
         client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire read lock.");
     }
@@ -432,7 +432,7 @@ void serve_download(int efd, transaction_t*trans) {
     lock.l_whence = SEEK_SET;
     lock.l_start = 0;
     lock.l_len = 0;
-    if (fcntl(fd, F_OFD_GETLK, &lock) == -1) {
+    if (fcntl(fd, F_SETLK, &lock) == -1) {
         if (errno == EACCES || errno == EAGAIN) {
            /* lock failed */
            client_error(efd, trans, trans->filename, "503", "Service Unavaliable", "File is being written.");
@@ -471,7 +471,7 @@ void serve_upload(int efd, transaction_t* trans) {
             return;
         }
         /* add write lock */
-        if (fcntl(trans->write_fd, F_OFD_GETLK, &lock) == -1) {
+        if (fcntl(trans->write_fd, F_GETLK, &lock) == -1) {
             unix_error("get lock failed");
             client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire write lock.");
         }
@@ -483,7 +483,7 @@ void serve_upload(int efd, transaction_t* trans) {
         lock.l_whence = SEEK_SET;
         lock.l_start = 0;
         lock.l_len = 0;
-        if (fcntl(trans->write_fd, F_OFD_GETLK, &lock) == -1) {
+        if (fcntl(trans->write_fd, F_SETLK, &lock) == -1) {
             if (errno == EACCES || errno == EAGAIN) {
                 /* lock failed */
                 client_error(efd, trans, trans->filename, "503", "Service Unavaliable", "File is being read/written.");
@@ -558,7 +558,7 @@ void finish_transaction(int efd, transaction_t* trans) {
     if (close(trans->fd) < 0) {
         unix_error("close socket");
     }
-    if (trans->haslock && active_fd > 0 && fcntl(active_fd, F_OFD_GETLK, &lock) < 0) {
+    if (trans->haslock && active_fd > 0 && fcntl(active_fd, F_SETLK, &lock) < 0) {
         unix_error("unlock");
     }
     if (trans->read_fd > 0 && close(trans->read_fd) < 0) {
