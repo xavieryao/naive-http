@@ -76,6 +76,9 @@ transaction_t* find_empty_transaction_for_fd(int fd) {
     new_node->slot = &slots.transactions[fd % MAXHASH];
     new_node->newer = NULL;
     new_node->older = NULL;
+    init_transaction(&new_node->transaction);
+    new_node->transaction.node = new_node;
+    add_transaction(&new_node->transaction);
     return &new_node->transaction; 
 }
 
@@ -113,8 +116,8 @@ static void remove_from_queue(transaction_node_t* node) {
     }
 }
 
-void update_access(transaction_node_t* node) {
-    node->last_accessed = time(NULL);
-    remove_from_queue(node);
-    append_front(node);
+void update_access(transaction_t* trans) {
+    trans->last_accessed = time(0)
+    remove_from_queue(trans->node);
+    append_front(trans->node);
 }

@@ -80,6 +80,6 @@ transaction_t* find_empty_transaction_for_fd(int fd);
 transaction_t* find_transaction_for_fd(int fd);
 void remove_transaction_from_slots(transaction_t* trans);
 void init_headers(http_headers_t *headers);
-void update_access(transaction_node_t* node);
+void update_access(transaction_t* trans);
 
 #endif //NAIVE_HTTP_TRANS_H

@@ -116,8 +116,6 @@ void accept_connection(int fd, int efd) {
             close(connfd); /* Reached transaction limit */
             return;
         }
-        init_transaction(slot);
-        add_transaction();
         slot->fd = connfd;
         slot->state = S_READ_REQ_HEADER;
     }
