@@ -27,33 +27,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "transaction.h"
 
 
-/* protocol related event-handlers */
-void handle_protocol_event(int efd, transaction_t* trans);
-void serve_download(int efd, transaction_t* trans);
-void serve_upload(int efd, transaction_t* trans);
-void finish_transaction(int efd, transaction_t* trans);
-void accept_connection(int fd, int efd);
-void read_request_header(transaction_t* trans, int efd);
-void send_resp_header(int efd, transaction_t* trans);
-void client_error(int efd, transaction_t* trans, char *cause, char *errnum,
-                 char *shortmsg, char *longmsg);
 
-
-/* transmission related event-handlers */
-void handle_transmission_event(int efd, transaction_t* trans);
-void write_n(int efd, transaction_t* trans);
-void write_file(int efd, transaction_t* trans);
-void read_n(int efd, transaction_t* trans);
-
-/* utility functions */
-void parse_uri(char *uri, char *filename);
-void get_filetype(char *filename, char *filetype);
-
-/* data structure related functions */
-
-void destroy_headers(http_headers_t *hdrs);
-void destroy_header_item(http_header_item_t *item);
-void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
 /*
  * Handle HTTP/1.0 transactions
@@ -76,7 +50,7 @@ void handle_request(int fd, int listenfd, int efd) {
     return;
 }
 
-void accept_connection(int fd, int efd) {
+static void accept_connection(int fd, int efd) {
     printf("accept connection.\n");
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
@@ -123,7 +97,7 @@ void accept_connection(int fd, int efd) {
 
 
 
-void read_request_header(transaction_t* trans, int efd) {
+static void read_request_header(transaction_t* trans, int efd) {
     printf("read request header.\n");
     ssize_t count;
     while (trans->read_pos <= MAXBUF-1) {
@@ -305,7 +279,7 @@ void read_request_header(transaction_t* trans, int efd) {
 /*
  * parse_uri - parse URI into filename
  */
-void parse_uri(char *uri, char *filename) {
+static void parse_uri(char *uri, char *filename) {
     strcpy(filename, ".");
     strcat(filename, uri);
     /*
@@ -314,7 +288,7 @@ void parse_uri(char *uri, char *filename) {
         */
 }
 
-void send_resp_header(int efd, transaction_t* trans) {
+static void send_resp_header(int efd, transaction_t* trans) {
     printf("send_resp_header\n");
     char filetype[MAXLINE];
     int header_len;
@@ -332,7 +306,7 @@ void send_resp_header(int efd, transaction_t* trans) {
     handle_transmission_event(efd, trans);
 }
 
-void write_n(int efd, transaction_t* trans) {
+static void write_n(int efd, transaction_t* trans) {
     printf("write all %d\n", trans->write_len);
     ssize_t count;
     while (trans->write_pos < trans->write_len) {
@@ -357,7 +331,7 @@ void write_n(int efd, transaction_t* trans) {
     handle_protocol_event(efd, trans);
 }
 
-void write_file(int efd, transaction_t* trans) {
+static void write_file(int efd, transaction_t* trans) {
     printf("write file to socket\n");
     int rc;
     while (trans->write_pos < trans->filesize) {
@@ -375,7 +349,7 @@ void write_file(int efd, transaction_t* trans) {
     handle_protocol_event(efd, trans);
 }
 
-void read_n(int efd, transaction_t* trans) {
+static void read_n(int efd, transaction_t* trans) {
     printf("read_n %d\n", trans->read_len);
     ssize_t count = 0;
     while (trans->read_pos < trans->read_len) {
@@ -402,7 +376,7 @@ void read_n(int efd, transaction_t* trans) {
 /*
  * serve_download - copy a file back to the client
  */
-void serve_download(int efd, transaction_t*trans) {
+static void serve_download(int efd, transaction_t*trans) {
     printf("serve download\n");
     int fd;
     fd = open(trans->filename, O_RDONLY, 0);
@@ -418,7 +392,7 @@ void serve_download(int efd, transaction_t*trans) {
     handle_transmission_event(efd, trans);
 }
 
-void serve_upload(int efd, transaction_t* trans) {
+static void serve_upload(int efd, transaction_t* trans) {
     printf("serve upload %s\n", trans->filename);
     if (trans->write_fd == INVALID_FD) {
         /*
@@ -468,7 +442,8 @@ void serve_upload(int efd, transaction_t* trans) {
 /*
  * get_filetype - derive file type from file name
  */
-void get_filetype(char *filename, char *filetype) {
+// FIXME binary
+static void get_filetype(char *filename, char *filetype) {
     if (strstr(filename, ".html"))
         strcpy(filetype, "text/html");
     else if (strstr(filename, ".gif"))
@@ -508,7 +483,7 @@ void finish_transaction(int efd, transaction_t* trans) {
     remove_transaction_from_slots(trans);
 }
 
-void handle_protocol_event(int efd, transaction_t* trans) {
+static void handle_protocol_event(int efd, transaction_t* trans) {
     switch(trans->next_stage) {
         case P_READ_REQ_BODY:
             serve_upload(efd, trans);
@@ -525,7 +500,7 @@ void handle_protocol_event(int efd, transaction_t* trans) {
     }
 }
 
-void handle_transmission_event(int efd, transaction_t* trans) {
+static void handle_transmission_event(int efd, transaction_t* trans) {
     switch (trans->state) {
         case S_READ_REQ_HEADER:
             read_request_header(trans, efd);
@@ -545,7 +520,7 @@ void handle_transmission_event(int efd, transaction_t* trans) {
 /*
  * init_headers Initialize a http_headers_t struct
  */
-void init_headers(http_headers_t *hdrs) {
+static void init_headers(http_headers_t *hdrs) {
     hdrs->len = 0;
     hdrs->head = NULL;
     hdrs->tail = NULL;
@@ -554,7 +529,7 @@ void init_headers(http_headers_t *hdrs) {
 /*
  * append_header Append an entity
  */
-void append_header(http_headers_t *hdrs, http_header_item_t *item) {
+static void append_header(http_headers_t *hdrs, http_header_item_t *item) {
     item->next = NULL;
     if (hdrs->len == 0) {
         hdrs->len = 1;
@@ -570,20 +545,20 @@ void append_header(http_headers_t *hdrs, http_header_item_t *item) {
 /*
  * destroy_headers Destroy a http_headers_t struct
  */
-void destroy_headers(http_headers_t *hdrs) {
+static void destroy_headers(http_headers_t *hdrs) {
     destroy_header_item(hdrs->head);
 }
 
 /*
  * destroy_header_item Destroy a http_header_item_t struct
  */
-void destroy_header_item(http_header_item_t *item) {
+static void destroy_header_item(http_header_item_t *item) {
     if (item == NULL) return;
     if (item->next != NULL) destroy_header_item(item->next);
     free(item);
 }
 
-void client_error(int efd, transaction_t* trans, char *cause, char *errnum, char *shortmsg, char *longmsg) {
+static void client_error(int efd, transaction_t* trans, char *cause, char *errnum, char *shortmsg, char *longmsg) {
     int n;
     int body_len;
     char body[MAXBUF];
