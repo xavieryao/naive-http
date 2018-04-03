@@ -2,8 +2,6 @@
     "files.associations": {
         "strings.h": "c",
         "http.h": "c",
-        "rio.h": "c",
-        "transaction.h": "c",
-        "error_handler.h": "c"
+        "rio.h": "c"
     }
 }
