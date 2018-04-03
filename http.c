@@ -23,7 +23,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <sys/sendfile.h>
 #include "http.h"
 #include "error_handler.h"
-#include "rio.h"
 #include "socket_util.h"
 #include "transaction.h"
 
@@ -114,7 +113,9 @@ void accept_connection(int fd, int efd) {
 
         transaction_t* slot = find_empty_transaction_for_fd(efd, connfd);
         if (slot == NULL) {
-            close(connfd); /* Reached transaction limit */
+            if (close(connfd) < 0) { /* Reached transaction limit */
+                unix_error("close");
+            }
             return;
         }
         slot->fd = connfd;
@@ -184,6 +185,10 @@ void read_request_header(transaction_t* trans, int efd) {
     char* tofree, *remain, *value_s, *key_s;
     int header_len = trans->parse_pos + header_tail_len;
     tofree = remain = calloc(sizeof(char), header_len + 1);
+    if (tofree == NULL) {
+        unix_error("fatal: calloc");
+        exit(-2);
+    }
     strncpy(tofree, trans->read_buf, header_len);
 
     strsep(&remain, "\r\n"); /* skip request line */
@@ -309,11 +314,7 @@ void read_request_header(transaction_t* trans, int efd) {
  */
 void parse_uri(char *uri, char *filename) {
     strcpy(filename, ".");
-    strcat(filename, uri);
-    /*
-    if (uri[strlen(uri) - 1] == '/')
-        strcat(filename, "home.html");
-        */
+    strncat(filename, uri, MAXLINE);
 }
 
 void send_resp_header(int efd, transaction_t* trans) {
@@ -444,7 +445,7 @@ void serve_upload(int efd, transaction_t* trans) {
         * Permission: only owner can read/write.
         *
         */
-        trans->write_fd = open(trans->filename, O_WRONLY | O_CREAT /*| O_EXLOCK*/, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
+        trans->write_fd = open(trans->filename, O_WRONLY | O_CREAT, S_IWUSR | S_IRUSR); 
         if (trans->write_fd <= 0) {
             unix_error("Could not open file.");
             client_error(efd, trans, trans->filename, "503", "Service Unavailable", "Cannot create the requested file.");
@@ -468,7 +469,6 @@ void serve_upload(int efd, transaction_t* trans) {
         if (not trans->dest_file) {
             unix_error("failed to open dest_file");
             client_error(efd, trans, trans->filename, "503", "Service Unavailable", "Cannot create the requested file.");
-            // FIXME cleanup
             return;
         }
     }
@@ -504,7 +504,7 @@ void get_filetype(char *filename, char *filetype) {
     else if (strstr(filename, ".jpg"))
         strcpy(filetype, "image/jpeg");
     else
-        strcpy(filetype, "text/plain");
+        strcpy(filetype, "application/octet-stream");
 }
 
 void finish_transaction(int efd, transaction_t* trans) {
@@ -556,7 +556,8 @@ void handle_protocol_event(int efd, transaction_t* trans) {
             finish_transaction(efd, trans);
             break;
         case P_INVALID:
-            //FIXME fatal
+            app_error("fatal: invalid stage");
+            exit(-2);
             break;
     }
 }
@@ -576,7 +577,8 @@ void handle_transmission_event(int efd, transaction_t* trans) {
             write_file(efd, trans);
             break;
         case S_INVALID:
-            // FIXME: fatal
+            app_error("fatal: invalid state");
+            exit(-2);
             break;
     }
 }

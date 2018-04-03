@@ -49,14 +49,19 @@ int open_listenfd(char *port)
             continue;  /* Socket failed, try the next */
 
         /* Eliminates "Address already in use" error from bind */
-        setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR,
-                   (const void *)&optval , sizeof(int));
+        if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR,
+                   (const void *)&optval , sizeof(int)) < 0) {
+            unix_error("setsockopt");
+            freeaddrinfo(listp);
+            return -1;
+        }
 
         /* Bind the descriptor to the address */
         if (bind(listenfd, p->ai_addr, p->ai_addrlen) == 0)
             break; /* Success */
         if (close(listenfd) < 0) { /* Bind failed, try the next */
             fprintf(stderr, "open_listenfd close failed: %s\n", strerror(errno));
+            freeaddrinfo(listp);
             return -1;
         }
     }
@@ -118,6 +123,7 @@ int open_clientfd(char *hostname, char *port) {
             break; /* Success */
         if (close(clientfd) < 0) { /* Connect failed, try another */
             fprintf(stderr, "open_clientfd: close failed: %s\n", strerror(errno));
+            freeaddrinfo(listp);
             return -1;
         }
     }

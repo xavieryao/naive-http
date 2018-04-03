@@ -51,7 +51,6 @@ typedef struct {
         GET, POST, HEAD
     } methodtype;
     http_headers_t headers;
-    /* */
 } transaction_t;
 
 typedef struct _transaction_node {

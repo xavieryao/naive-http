@@ -78,6 +78,10 @@ transaction_t* find_empty_transaction_for_fd(int efd, int fd) {
         node = node->next;
     } 
     transaction_node_t* new_node = malloc(sizeof(transaction_node_t));
+    if (!new_node) {
+        unix_error("fatal: malloc");
+        exit(-1);
+    }
     if (prev) prev->next = new_node;
     else slots.transactions[fd % MAXHASH] = new_node;
     new_node->next = NULL;

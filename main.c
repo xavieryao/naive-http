@@ -45,7 +45,10 @@ int main(int argc, char** argv) {
     /* ignore SIGPIPE */
     struct sigaction new_act, old_act;
     new_act.sa_handler = SIG_IGN;
-    sigaction(SIGPIPE, &new_act, &old_act);
+    if (sigaction(SIGPIPE, &new_act, &old_act) == -1) {
+        unix_error("sigaction");
+        return -1;
+    }
 
     /* initialize transactions */
     init_transaction_slots();
