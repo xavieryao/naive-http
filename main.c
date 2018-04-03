@@ -13,10 +13,7 @@
 int main(int argc, char** argv) {
     printf("Hello, World!\n");
 
-    int listenfd, connfd;
-    char hostname[MAXLINE], port[MAXLINE];
-    socklen_t clientlen;
-    struct sockaddr_storage clientaddr;
+    int listenfd;
 
     /* Check command-line arguments */
     if (argc != 2) {
@@ -57,7 +54,6 @@ int main(int argc, char** argv) {
     printf("Server up and running at port %s\n", argv[1]);
 
     /* Wait for epoll event and handle it */
-    int rc;
     int n, i;
     while (true) {
         n = epoll_wait(efd, events, MAXEVENT, -1);

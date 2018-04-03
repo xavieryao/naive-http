@@ -15,7 +15,6 @@ static transaction_slots_t slots;
 static transaction_queue_t queue;
 
 static void append_front(transaction_node_t* node);
-static void append_back(transaction_node_t* node);
 static void remove_from_queue(transaction_node_t* node);
 void finish_transaction(int efd, transaction_t* trans);
 

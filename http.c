@@ -141,7 +141,7 @@ void read_request_header(transaction_t* trans, int efd) {
             finish_transaction(efd, trans);
             return;
         } else {
-            printf("read %d bytes.\n", count);
+            printf("read %ld bytes.\n", count);
             trans->read_pos += count;
         }
     }
@@ -172,7 +172,7 @@ void read_request_header(transaction_t* trans, int efd) {
         return; /* haven't read the entire header */
     }
 
-    printf("read entire header at %d.\n", trans->parse_pos);
+    printf("read entire header at %ld.\n", trans->parse_pos);
     /* parse request line and header */
     if (sscanf(trans->read_buf, "%s %s %s", trans->method, trans->uri, trans->version) != 3) {
         client_error(efd, trans, "", "400", "Bad Request", "Invalid request line");
@@ -324,7 +324,7 @@ void send_resp_header(int efd, transaction_t* trans) {
     header_len = snprintf(trans->write_buf, sizeof(trans->write_buf), "HTTP/1.0 200 OK\r\n");
     header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Server: Naive HTTP Server\r\n");
     header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Connection: close\r\n");
-    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-length: %d\r\n", trans->filesize);
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-length: %ld\r\n", trans->filesize);
     header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-type: %s\r\n\r\n", filetype);
 
     trans->write_len = strlen(trans->write_buf);
@@ -333,7 +333,7 @@ void send_resp_header(int efd, transaction_t* trans) {
 }
 
 void write_n(int efd, transaction_t* trans) {
-    printf("write all %d\n", trans->write_len);
+    printf("write all %ld\n", trans->write_len);
     ssize_t count;
     while (trans->write_pos < trans->write_len) {
         count = write(trans->fd, trans->write_buf, trans->write_len-trans->write_pos);
@@ -348,7 +348,7 @@ void write_n(int efd, transaction_t* trans) {
             printf("client closed.\n");
             finish_transaction(efd, trans);
         } else {
-            printf("%d bytes written.\n", count);
+            printf("%ld bytes written.\n", count);
             trans->write_pos += count;
         }
     }
@@ -376,7 +376,7 @@ void write_file(int efd, transaction_t* trans) {
 }
 
 void read_n(int efd, transaction_t* trans) {
-    printf("read_n %d\n", trans->read_len);
+    printf("read_n %ld\n", trans->read_len);
     ssize_t count = 0;
     while (trans->read_pos < trans->read_len) {
         count = read(trans->fd, trans->read_buf, MIN(trans->read_len, MAXBUF-trans->read_pos));
@@ -391,7 +391,7 @@ void read_n(int efd, transaction_t* trans) {
             printf("client closed.\n");
             finish_transaction(efd, trans);
         } else {
-            printf("%d bytes read.\n", count);
+            printf("%ld bytes read.\n", count);
             trans->read_pos += count;
         }
     }
@@ -452,7 +452,7 @@ void serve_upload(int efd, transaction_t* trans) {
         client_error(efd, trans, trans->filename, "500", "Server Internal Error", "Cannot write to the requested file.");
         return;
     }
-    printf("%d bytes wrote to file.\n", trans->read_pos);
+    printf("%ld bytes wrote to file.\n", trans->read_pos);
     trans->saved_pos += trans->read_pos;
     trans->read_pos = 0;
     if (trans->saved_pos < trans->filesize) { /* Read more */
@@ -483,9 +483,10 @@ void get_filetype(char *filename, char *filetype) {
 
 void finish_transaction(int efd, transaction_t* trans) {
     printf("finish transaction\n");
-    epoll_event_t event;
-    event.data.fd = trans->fd;
-    epoll_ctl(efd, EPOLL_CTL_DEL, trans->fd, NULL);
+
+    if (epoll_ctl(efd, EPOLL_CTL_DEL, trans->fd, NULL) < 0) {
+        unix_error("epoll del");
+    }
 
     /* It's fine to close fd more than once. Just ignore the error. */
     if (close(trans->fd) < 0) {
@@ -522,6 +523,9 @@ void handle_protocol_event(int efd, transaction_t* trans) {
         case P_DONE:
             finish_transaction(efd, trans);
             break;
+        case P_INVALID:
+            //FIXME fatal
+            break;
     }
 }
 
@@ -538,6 +542,9 @@ void handle_transmission_event(int efd, transaction_t* trans) {
             break;
         case S_WRITE_FILE:
             write_file(efd, trans);
+            break;
+        case S_INVALID:
+            // FIXME: fatal
             break;
     }
 }
@@ -585,12 +592,12 @@ void destroy_header_item(http_header_item_t *item) {
 
 void client_error(int efd, transaction_t* trans, char *cause, char *errnum, char *shortmsg, char *longmsg) {
     int n;
-    int body_len;
+    int body_len = 0;
     char body[MAXBUF];
     epoll_event_t event;
     printf("client error %s %s %s\n", errnum, shortmsg, longmsg);
     /* Build the HTTP response body */
-    body_len = snprintf(body+body_len, sizeof(body) - body_len, "<html><title>Tiny Error</title>");
+    body_len = snprintf(body, sizeof(body) - body_len, "<html><title>Tiny Error</title>");
     body_len += snprintf(body+body_len, sizeof(body) - body_len, "<body bgcolor=""ffffff"">\r\n");
     body_len += snprintf(body+body_len, sizeof(body) - body_len, "%s: %s\r\n", errnum, shortmsg);
     body_len += snprintf(body+body_len, sizeof(body) - body_len, "<p>%s: %s\r\n", longmsg, cause);
