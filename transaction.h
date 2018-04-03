@@ -29,6 +29,7 @@ typedef struct {
     int response_code;
     time_t last_accessed;
     struct _transaction_node* node;
+    bool haslock;
     /* read from socket */
     char read_buf[MAXBUF];
     long read_len;

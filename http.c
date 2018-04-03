@@ -18,6 +18,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <iso646.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/file.h>
 #include <sys/errno.h>
 #include <sys/sendfile.h>
 #include "http.h"
@@ -247,6 +248,7 @@ void read_request_header(transaction_t* trans, int efd) {
             return;
         }
         trans->filesize = sbuf.st_size;
+
     }
     /* check post header */
     int content_len = -1;
@@ -405,12 +407,31 @@ void read_n(int efd, transaction_t* trans) {
 void serve_download(int efd, transaction_t*trans) {
     printf("serve download\n");
     int fd;
+    struct flock lock;
     fd = open(trans->filename, O_RDONLY, 0);
     if (fd < 0) {
         unix_error("open file");
         client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot open file");
         return;
     }
+
+    /* add read lock */
+    /* file size is not changed. This function is called directly after filesize is set. No writting. */
+    lock.l_type = F_RDLCK;
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;
+    if (fcntl(fd, F_SETLK, &lock) == -1) {
+        if (errno == EACCES || errno == EAGAIN) {
+           /* lock failed */
+           client_error(efd, trans, trans->filename, "503", "Service Unavaliable", "File is being written.");
+        } else {
+            unix_error("lock failed");
+            client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire read lock.");
+        }
+        return;
+    }
+    trans->haslock = true;
     trans->write_pos = 0;
     trans->read_fd = fd;
     trans->state = S_WRITE_FILE;
@@ -424,18 +445,32 @@ void serve_upload(int efd, transaction_t* trans) {
         /*
         * Create new file.
         * Use exclusive file lock to deal with consistency.
-        * Use chroot to restrict access.
         * Permission: only owner can read/write.
         *
         */
-        // TODO defer clean file
+        struct flock lock;
         trans->write_fd = open(trans->filename, O_WRONLY | O_CREAT /*| O_EXLOCK*/, S_IWUSR | S_IRUSR); /* TODO: Use chroot for security */
-        // FIXME O_EXLOCK not available on Linux
         if (trans->write_fd <= 0) {
             unix_error("Could not open file.");
             client_error(efd, trans, trans->filename, "503", "Service Unavailable", "Cannot create the requested file.");
             return;
         }
+        /* add write lock */
+        lock.l_type = F_WRLCK;
+        lock.l_whence = SEEK_SET;
+        lock.l_start = 0;
+        lock.l_len = 0;
+        if (fcntl(fd, F_SETLK, &lock) == -1) {
+            if (errno == EACCES || errno == EAGAIN) {
+                /* lock failed */
+                client_error(efd, trans, trans->filename, "503", "Service Unavaliable", "File is being read/written.");
+            } else {
+                unix_error("lock failed");
+                client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire write lock.");
+            }
+            return;
+        }
+        trans->haslock = true;
 
         /* write file */
         trans->dest_file = fdopen(trans->write_fd, "w");
@@ -484,13 +519,23 @@ void get_filetype(char *filename, char *filetype) {
 void finish_transaction(int efd, transaction_t* trans) {
     printf("finish transaction\n");
 
+    int active_fd = INVALID_FD;
+    struct flock lock;
+    lock.l_whence = SEEK_SET;
+    lock.l_len = 0;
+    lock.l_type = F_RDLCK;
+
     if (epoll_ctl(efd, EPOLL_CTL_DEL, trans->fd, NULL) < 0) {
         unix_error("epoll del");
     }
 
     /* It's fine to close fd more than once. Just ignore the error. */
+    active_fd = trans->read_fd > 0 ? trans->read_fd : trans->write_fd;
     if (close(trans->fd) < 0) {
         unix_error("close socket");
+    }
+    if (trans->haslock && active_fd > 0 && fcntl(active_fd, F_SETLK, &lock) < 0) {
+        unix_error("unlock");
     }
     if (trans->read_fd > 0 && close(trans->read_fd) < 0) {
         unix_error("close read fd");
@@ -500,11 +545,11 @@ void finish_transaction(int efd, transaction_t* trans) {
             unix_error("fclose failed");
         }
         if (trans->saved_pos != trans->filesize && remove(trans->filename) == ERROR) { /* Remove created file */
-            unix_error("remove failed"); /* Just ignore. */
+            unix_error("remove failed. But it's safe to ignore."); /* Just ignore. */
         }
     }
     if (trans->write_fd > 0 && close(trans->write_fd) < 0) {
-        unix_error("close write fd");
+        unix_error("close write fd. Usually safe to ignore.");
     }
     remove_transaction_from_slots(trans);
 }
