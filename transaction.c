@@ -30,6 +30,7 @@ void init_transaction(transaction_t* trans) {
     trans->write_pos = 0;
     trans->parse_pos = 0;
     trans->saved_pos = 0;
+    trans->write_offset = 0;
     trans->haslock = false;
     trans->last_accessed = time(NULL);
     init_headers(&trans->headers);

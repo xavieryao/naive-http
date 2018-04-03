@@ -363,7 +363,7 @@ void write_file(int efd, transaction_t* trans) {
     printf("write file to socket\n");
     int rc;
     while (trans->write_pos < trans->filesize) {
-        rc = sendfile(trans->fd, trans->read_fd, &trans->write_pos, trans->filesize - trans->write_pos);
+        rc = sendfile(trans->fd, trans->read_fd, &trans->write_offset, trans->filesize - trans->write_pos);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 unix_error("sendfile");
@@ -371,6 +371,7 @@ void write_file(int efd, transaction_t* trans) {
             }
             return;
         }
+        trans->write_pos += trans->write_offset;
     }
     /* write done */
     printf("whole file wrote to socket\n");

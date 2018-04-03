@@ -42,6 +42,7 @@ typedef struct {
     char write_buf[MAXBUF];
     long write_len;
     long write_pos;
+    long write_offset;
     int read_fd;
     /* request header */
     long filesize;
