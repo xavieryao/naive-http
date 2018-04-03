@@ -24,9 +24,33 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "error_handler.h"
 #include "rio.h"
 #include "socket_util.h"
-#include "transaction.h"
 
 
+static void handle_protocol_event(int efd, transaction_t* trans);
+static void serve_download(int efd, transaction_t* trans);
+static void serve_upload(int efd, transaction_t* trans);
+static void accept_connection(int fd, int efd);
+static void read_request_header(transaction_t* trans, int efd);
+static void send_resp_header(int efd, transaction_t* trans);
+static void client_error(int efd, transaction_t* trans, char *cause, char *errnum,
+                 char *shortmsg, char *longmsg);
+
+
+/* transmission related event-handlers */
+static void handle_transmission_event(int efd, transaction_t* trans);
+static void write_n(int efd, transaction_t* trans);
+static void write_file(int efd, transaction_t* trans);
+static void read_n(int efd, transaction_t* trans);
+
+/* utility functions */
+static void parse_uri(char *uri, char *filename);
+static void get_filetype(char *filename, char *filetype);
+
+/* data structure related functions */
+
+static void destroy_headers(http_headers_t *hdrs);
+static void destroy_header_item(http_header_item_t *item);
+static void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
 
 /*

@@ -4,6 +4,8 @@
         "http.h": "c",
         "rio.h": "c",
         "transaction.h": "c",
-        "error_handler.h": "c"
+        "error_handler.h": "c",
+        "fcntl.h": "c",
+        "socket_util.h": "c"
     }
 }
