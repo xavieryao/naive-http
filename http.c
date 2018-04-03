@@ -417,23 +417,8 @@ void serve_download(int efd, transaction_t*trans) {
 
     /* add read lock */
     /* file size is not changed. This function is called directly after filesize is set. No writting. */
-    struct flock lock = {};
-    lock.l_whence = SEEK_SET;
-    lock.l_start = 0;
-    lock.l_len = 0;
-    if (fcntl(fd, F_GETLK, &lock) == -1) {
-        unix_error("get lock failed");
-        client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire read lock.");
-    }
-    if (lock.l_type != F_UNLCK) {
-        client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire read lock.");
-    }
-    lock.l_type = F_RDLCK;
-    lock.l_whence = SEEK_SET;
-    lock.l_start = 0;
-    lock.l_len = 0;
-    if (fcntl(fd, F_SETLK, &lock) == -1) {
-        if (errno == EACCES || errno == EAGAIN) {
+    if (flock(fd, LOCK_SH|LOCK_NB) == -1) {
+        if (errno == EWOULDBLOCK) {
            /* lock failed */
            client_error(efd, trans, trans->filename, "503", "Service Unavaliable", "File is being written.");
         } else {
@@ -466,8 +451,8 @@ void serve_upload(int efd, transaction_t* trans) {
             return;
         }
         /* add write lock */
-        if (flock(trans->write_fd, F_SETLK, &lock) == -1) {
-            if (errno == EACCES || errno == EAGAIN) {
+        if (flock(trans->write_fd, LOCK_EX | LOCK_NB) == -1) {
+            if (errno == EWOULDBLOCK) {
                 /* lock failed */
                 client_error(efd, trans, trans->filename, "503", "Service Unavaliable", "File is being read/written.");
             } else {
@@ -526,11 +511,6 @@ void finish_transaction(int efd, transaction_t* trans) {
     printf("finish transaction\n");
 
     int active_fd = INVALID_FD;
-    struct flock lock = {};
-    lock.l_whence = SEEK_SET;
-    lock.l_start = 0;
-    lock.l_len = 0;
-    lock.l_type = F_UNLCK;
 
     if (epoll_ctl(efd, EPOLL_CTL_DEL, trans->fd, NULL) < 0) {
         unix_error("epoll del");
@@ -541,7 +521,7 @@ void finish_transaction(int efd, transaction_t* trans) {
     if (close(trans->fd) < 0) {
         unix_error("close socket");
     }
-    if (trans->haslock && active_fd > 0 && fcntl(active_fd, F_SETLK, &lock) < 0) {
+    if (trans->haslock && active_fd > 0 && flock(active_fd, LOCK_UN | LOCK_NB) < 0) {
         unix_error("unlock");
     }
     if (trans->read_fd > 0 && close(trans->read_fd) < 0) {
