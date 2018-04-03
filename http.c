@@ -477,9 +477,6 @@ void finish_transaction(int efd, transaction_t* trans) {
     if (close(trans->fd) < 0) {
         unix_error("close socket");
     }
-    if (trans->write_fd > 0 && close(trans->write_fd) < 0) {
-        unix_error("close write fd");
-    }
     if (trans->read_fd > 0 && close(trans->read_fd) < 0) {
         unix_error("close read fd");
     }
@@ -490,6 +487,9 @@ void finish_transaction(int efd, transaction_t* trans) {
         if (trans->saved_pos != trans->filesize && remove(trans->filename) == ERROR) { /* Remove created file */
             unix_error("remove failed"); /* Just ignore. */
         }
+    }
+    if (trans->write_fd > 0 && close(trans->write_fd) < 0) {
+        unix_error("close write fd");
     }
     remove_transaction_from_slots(trans);
 }
