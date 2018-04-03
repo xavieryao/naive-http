@@ -97,7 +97,7 @@ void add_transaction(transaction_t* trans) {
 }
 
 static void append_front(transaction_node_t* node) {
-    if (queue.newest) queue.newest.newer = node;
+    if (queue.newest) queue.newest->newer = node;
     node->older = queue.newest;
     node->newer = NULL;
     queue.newest = node;
@@ -117,7 +117,7 @@ static void remove_from_queue(transaction_node_t* node) {
 }
 
 void update_access(transaction_t* trans) {
-    trans->last_accessed = time(0)
+    trans->last_accessed = time(0);
     remove_from_queue(trans->node);
     append_front(trans->node);
 }
