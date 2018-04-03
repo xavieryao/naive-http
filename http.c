@@ -326,8 +326,8 @@ void send_resp_header(int efd, transaction_t* trans) {
     header_len = snprintf(trans->write_buf, sizeof(trans->write_buf), "HTTP/1.0 200 OK\r\n");
     header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Server: Naive HTTP Server\r\n");
     header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Connection: close\r\n");
-    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-length: %ld\r\n", trans->filesize);
-    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-type: %s\r\n\r\n", filetype);
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-Length: %ld\r\n", trans->filesize);
+    header_len += snprintf(trans->write_buf + header_len, sizeof(trans->write_buf) - header_len, "Content-Type: %s\r\n\r\n", filetype);
 
     trans->write_len = strlen(trans->write_buf);
     trans->next_stage = P_SEND_RESP_BODY;
