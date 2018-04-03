@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <signal.h>
 #include "misc.h"
 #include "socket_util.h"
 #include "error_handler.h"
@@ -44,9 +45,18 @@ int main(int argc, char** argv) {
     }
     epoll_event_t events[MAXEVENT];
 
+    /* ignore SIGPIPE */
+    struct sigaction new_act, old_act;
+    new_act.sa_handler = SIG_IGN;
+    sigaction(SIGPIPE, &new_act, &old_act);
+
+    /* initialize transactions */
     init_transaction_slots();
+
+    /* Setup and running ! */
     printf("Server up and running at port %s\n", argv[1]);
 
+    /* Wait for epoll event and handle it */
     int rc;
     int n, i;
     while (true) {
@@ -63,27 +73,6 @@ int main(int argc, char** argv) {
             }
             handle_request(events[i].data.fd, listenfd, efd);
         }
-/*
-        clientlen = sizeof(clientaddr);
-
-        connfd = accept(listenfd, (SA*) &clientaddr, &clientlen);
-        if (connfd < 0) {
-            unix_error("Failed to accept new connection.");
-            continue;
-        }
-
-        if ((rc = getnameinfo((SA*) &clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0)) != 0) {
-            gai_error(rc, "Failed to get name info");
-        } else {
-            printf("Accepted connection from (%s, %s)\n", hostname, port);
-        }
-
-        handle_conn(connfd);
-
-        if (close(connfd) == -1) {
-            unix_error("Failed to connect connection socket.");
-        }
-*/
     }
     return 0;
 }
