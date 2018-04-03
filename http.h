@@ -14,6 +14,24 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <sys/epoll.h>
 #include "misc.h"
+#include "transaction.h"
+
+/*
+ * entity of request header
+ */
+typedef struct _http_header_item_t {
+    char key[MAXLINE];
+    char value[MAXLINE];
+    struct _http_header_item_t *next;
+} http_header_item_t;
+
+/*
+ * list of entities of request header
+ */
+typedef struct {
+    int len;
+    http_header_item_t* head, *tail;
+} http_headers_t;
 
 void handle_request(int fd, int listenfd, int efd);
 void handle_epoll_error(int fd, int efd);
@@ -47,21 +65,5 @@ static void destroy_headers(http_headers_t *hdrs);
 static void destroy_header_item(http_header_item_t *item);
 static void append_header(http_headers_t *hdrs, http_header_item_t *item);
 
-/*
- * entity of request header
- */
-typedef struct _http_header_item_t {
-    char key[MAXLINE];
-    char value[MAXLINE];
-    struct _http_header_item_t *next;
-} http_header_item_t;
-
-/*
- * list of entities of request header
- */
-typedef struct {
-    int len;
-    http_header_item_t* head, *tail;
-} http_headers_t;
 
 #endif //NAIVE_HTTP_HTTP_H
