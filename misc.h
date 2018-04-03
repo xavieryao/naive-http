@@ -31,15 +31,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define MAX(X,Y) X>=Y ? X : Y
 
 
-void
-stderr_printf(const char *fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  va_end(ap);
-}
-
 /* struct aliases */
 typedef struct sockaddr SA;
 typedef struct epoll_event epoll_event_t;
