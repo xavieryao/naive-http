@@ -371,6 +371,7 @@ void write_file(int efd, transaction_t* trans) {
             }
             return;
         }
+        printf("send file: %ld bytes sent.\n", rc);
     }
     /* write done */
     printf("whole file wrote to socket\n");
@@ -417,6 +418,13 @@ void serve_download(int efd, transaction_t*trans) {
 
     /* add read lock */
     /* file size is not changed. This function is called directly after filesize is set. No writting. */
+    if (fcntl(fd, F_GETLK, &lock) == -1) {
+        unix_error("get lock failed");
+        client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire read lock.");
+    }
+    if (lock.l_type != F_UNLCK) {
+        client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire read lock.");
+    }
     lock.l_type = F_RDLCK;
     lock.l_whence = SEEK_SET;
     lock.l_start = 0;
@@ -456,6 +464,13 @@ void serve_upload(int efd, transaction_t* trans) {
             return;
         }
         /* add write lock */
+        if (fcntl(trans->write_fd, F_GETLK, &lock) == -1) {
+            unix_error("get lock failed");
+            client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire write lock.");
+        }
+        if (lock.l_type != F_UNLCK) {
+            client_error(efd, trans, trans->filename, "500", "Internal Server Error", "Cannot acquire write lock.");
+        }
         lock.l_type = F_WRLCK;
         lock.l_whence = SEEK_SET;
         lock.l_start = 0;
@@ -523,7 +538,7 @@ void finish_transaction(int efd, transaction_t* trans) {
     struct flock lock;
     lock.l_whence = SEEK_SET;
     lock.l_len = 0;
-    lock.l_type = F_RDLCK;
+    lock.l_type = F_UNLCK;
 
     if (epoll_ctl(efd, EPOLL_CTL_DEL, trans->fd, NULL) < 0) {
         unix_error("epoll del");
