@@ -14,11 +14,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 static transaction_slots_t slots;
 static transaction_queue_t queue;
 
-static void append_front(transaction_node_t* node);
-static void remove_from_queue(transaction_node_t* node);
-void finish_transaction(int efd, transaction_t* trans);
+static void append_front(transaction_node_t *node);
 
-void init_transaction(transaction_t* trans) {
+static void remove_from_queue(transaction_node_t *node);
+
+void finish_transaction(int efd, transaction_t *trans);
+
+void init_transaction(transaction_t *trans) {
     trans->fd = INVALID_FD;
     trans->read_fd = INVALID_FD;
     trans->write_fd = INVALID_FD;
@@ -45,9 +47,9 @@ void init_transaction_slots() {
     queue.oldest = NULL;
 }
 
-void remove_transaction_from_slots(transaction_t* trans) {
+void remove_transaction_from_slots(transaction_t *trans) {
     if (trans->fd < 0) return;
-    transaction_node_t* node = NULL, *prev = NULL;
+    transaction_node_t *node = NULL, *prev = NULL;
     node = slots.transactions[trans->fd % MAXHASH];
     while (node && node->transaction.fd != trans->fd) {
         prev = node;
@@ -56,14 +58,14 @@ void remove_transaction_from_slots(transaction_t* trans) {
     if (node) {
         remove_from_queue(node);
         if (prev) prev->next = node->next;
-        else slots.transactions[trans->fd % MAXHASH] = NULL; 
+        else slots.transactions[trans->fd % MAXHASH] = NULL;
         free(node);
         slots.n -= 1;
     }
 }
 
-transaction_t* find_empty_transaction_for_fd(int efd, int fd) {
-    if (slots.n > MAXTRANSACTION) { 
+transaction_t *find_empty_transaction_for_fd(int efd, int fd) {
+    if (slots.n > MAXTRANSACTION) {
         if (queue.oldest && (time(NULL) - queue.oldest->transaction.last_accessed) > TIMEOUT) {
             /* kick out timed-out transactions */
             finish_transaction(efd, &queue.oldest->transaction);
@@ -71,13 +73,13 @@ transaction_t* find_empty_transaction_for_fd(int efd, int fd) {
             return NULL;
         }
     }
-    transaction_node_t* node = slots.transactions[fd % MAXHASH];
-    transaction_node_t* prev = node;
+    transaction_node_t *node = slots.transactions[fd % MAXHASH];
+    transaction_node_t *prev = node;
     while (node != NULL) {
         prev = node;
         node = node->next;
-    } 
-    transaction_node_t* new_node = malloc(sizeof(transaction_node_t));
+    }
+    transaction_node_t *new_node = malloc(sizeof(transaction_node_t));
     if (!new_node) {
         unix_error("fatal: malloc");
         exit(-1);
@@ -91,11 +93,11 @@ transaction_t* find_empty_transaction_for_fd(int efd, int fd) {
     init_transaction(&new_node->transaction);
     new_node->transaction.node = new_node;
     add_transaction(&new_node->transaction);
-    return &new_node->transaction; 
+    return &new_node->transaction;
 }
 
-transaction_t* find_transaction_for_fd(int fd) {
-    transaction_node_t* node = NULL;
+transaction_t *find_transaction_for_fd(int fd) {
+    transaction_node_t *node = NULL;
     node = slots.transactions[fd % MAXHASH];
     while (node && node->transaction.fd != fd) {
         node = node->next;
@@ -103,12 +105,12 @@ transaction_t* find_transaction_for_fd(int fd) {
     return &node->transaction;
 }
 
-void add_transaction(transaction_t* trans) {
+void add_transaction(transaction_t *trans) {
     slots.n += 1;
     append_front(trans->node);
 }
 
-static void append_front(transaction_node_t* node) {
+static void append_front(transaction_node_t *node) {
     if (queue.newest) queue.newest->newer = node;
     node->older = queue.newest;
     node->newer = NULL;
@@ -116,20 +118,20 @@ static void append_front(transaction_node_t* node) {
     if (queue.n == 0) {
         queue.oldest = node;
     }
-    queue.n ++;
+    queue.n++;
 }
 
-static void remove_from_queue(transaction_node_t* node) {
+static void remove_from_queue(transaction_node_t *node) {
     if (node->newer) node->newer->older = node->older;
     if (node->older) node->older->newer = node->newer;
     if (queue.oldest == node) queue.oldest = node->newer;
-    queue.n --;
+    queue.n--;
     if (queue.n == 0) {
         queue.newest = queue.oldest = NULL;
     }
 }
 
-void update_access(transaction_t* trans) {
+void update_access(transaction_t *trans) {
     trans->last_accessed = time(0);
     remove_from_queue(trans->node);
     append_front(trans->node);

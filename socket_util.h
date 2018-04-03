@@ -15,7 +15,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define LISTENQ  1024 /* backlog, constant as in CS:APP3e */
 
 int open_clientfd(char *hostname, char *port);
+
 int open_listenfd(char *port);
+
 int set_nonblocking(int fd);
 
 #endif //NAIVE_HTTP_SOCKET_UTIL_H

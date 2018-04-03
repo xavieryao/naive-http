@@ -27,10 +27,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
  *       -1 with errno set for other errors.
  */
 
-int open_listenfd(char *port)
-{
+int open_listenfd(char *port) {
     struct addrinfo hints, *listp, *p;
-    int listenfd, rc, optval=1;
+    int listenfd, rc, optval = 1;
 
     /* Get a list of potential server addresses */
     memset(&hints, 0, sizeof(struct addrinfo));
@@ -50,7 +49,7 @@ int open_listenfd(char *port)
 
         /* Eliminates "Address already in use" error from bind */
         if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR,
-                   (const void *)&optval , sizeof(int)) < 0) {
+                       (const void *) &optval, sizeof(int)) < 0) {
             unix_error("setsockopt");
             freeaddrinfo(listp);
             return -1;

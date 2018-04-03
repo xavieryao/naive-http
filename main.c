@@ -1,16 +1,13 @@
 #include <stdio.h>
-#include <sys/socket.h>
 #include <stdbool.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <signal.h>
-#include "misc.h"
 #include "socket_util.h"
 #include "error_handler.h"
 #include "http.h"
 #include "transaction.h"
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     printf("Hello, World!\n");
 
     int listenfd;

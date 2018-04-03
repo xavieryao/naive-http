@@ -16,6 +16,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "misc.h"
 
 void handle_request(int fd, int listenfd, int efd);
+
 void handle_epoll_error(int fd, int efd);
 
 /*
@@ -32,7 +33,7 @@ typedef struct _http_header_item_t {
  */
 typedef struct {
     int len;
-    http_header_item_t* head, *tail;
+    http_header_item_t *head, *tail;
 } http_headers_t;
 
 #endif //NAIVE_HTTP_HTTP_H

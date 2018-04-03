@@ -18,8 +18,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <netdb.h>
 
 void unix_error(char *msg);
+
 void posix_error(int code, char *msg);
+
 void gai_error(int code, char *msg);
+
 void app_error(char *msg);
 
 #endif //NAIVE_HTTP_ERROR_HANDLER_H
