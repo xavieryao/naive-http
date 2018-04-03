@@ -13,6 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <stdbool.h>
 #include <time.h>
 #include "http.h"
+#include "error_handler.h"
 #include "misc.h"
 
 /* which state of transmission */

@@ -10,7 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 */
 
 #include <sys/stat.h>
-#include <printf.h>
+#include <stdio.h>
 #include <strings.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -60,7 +60,7 @@ void append_header(http_headers_t *hdrs, http_header_item_t *item);
  * Event-based using epoll.
  */
 void handle_request(int fd, int listenfd, int efd) {
-    printf("handle request.\n");
+    debug_print("handle request.\n");
     if (fd == listenfd) {
         accept_connection(fd, efd);
         // Accept socket
@@ -77,7 +77,7 @@ void handle_request(int fd, int listenfd, int efd) {
 }
 
 void accept_connection(int fd, int efd) {
-    printf("accept connection.\n");
+    debug_print("accept connection.\n");
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
     int connfd;
@@ -126,7 +126,7 @@ void accept_connection(int fd, int efd) {
 
 
 void read_request_header(transaction_t* trans, int efd) {
-    printf("read request header.\n");
+    debug_print("read request header.\n");
     ssize_t count;
     while (trans->read_pos <= MAXBUF-1) {
         count = read(trans->fd, trans->read_buf+trans->read_pos, MAXBUF-trans->read_pos);
@@ -139,11 +139,11 @@ void read_request_header(transaction_t* trans, int efd) {
                 break;
             }
         } else if (count == 0) { /* Client closed connection */
-            printf("client closed.\n");
+            debug_print("client closed.\n");
             finish_transaction(efd, trans);
             return;
         } else {
-            printf("read %ld bytes.\n", count);
+            debug_print("read %ld bytes.\n", count);
             trans->read_pos += count;
         }
     }
@@ -154,7 +154,7 @@ void read_request_header(transaction_t* trans, int efd) {
     }
 
     /* Search for end of header "\r\n\r\n" */
-    printf("looking for end-of-header\n");
+    debug_print("looking for end-of-header\n");
     const char header_tail[] = "\r\n\r\n";
     int header_tail_len = 4;
     int i;
@@ -170,11 +170,11 @@ void read_request_header(transaction_t* trans, int efd) {
         if (read_header_tail) break;
     }
     if (not (read_header_tail)) {
-        printf("Haven't read entire header.\n");
+        debug_print("Haven't read entire header.\n");
         return; /* haven't read the entire header */
     }
 
-    printf("read entire header at %ld.\n", trans->parse_pos);
+    debug_print("read entire header at %ld.\n", trans->parse_pos);
     /* parse request line and header */
     if (sscanf(trans->read_buf, "%s %s %s", trans->method, trans->uri, trans->version) != 3) {
         client_error(efd, trans, "", "400", "Bad Request", "Invalid request line");
@@ -261,7 +261,7 @@ void read_request_header(transaction_t* trans, int efd) {
         http_header_item_t* hdr_item = trans->headers.head;
         while (hdr_item != NULL) {
             if (strcmp(hdr_item->key, "Content-Length") == 0) {
-                printf("value [%s]\n", hdr_item->value);
+                debug_print("value [%s]\n", hdr_item->value);
                 content_len = strtol(hdr_item->value, NULL, 10);
                 if (content_len == 0) {
                     unix_error("strtol failed");
@@ -318,7 +318,7 @@ void parse_uri(char *uri, char *filename) {
 }
 
 void send_resp_header(int efd, transaction_t* trans) {
-    printf("send_resp_header\n");
+    debug_print("send_resp_header\n");
     char filetype[MAXLINE];
     int header_len;
 
@@ -336,7 +336,7 @@ void send_resp_header(int efd, transaction_t* trans) {
 }
 
 void write_n(int efd, transaction_t* trans) {
-    printf("write all %ld\n", trans->write_len);
+    debug_print("write all %ld\n", trans->write_len);
     ssize_t count;
     while (trans->write_pos < trans->write_len) {
         count = write(trans->fd, trans->write_buf, trans->write_len-trans->write_pos);
@@ -348,10 +348,10 @@ void write_n(int efd, transaction_t* trans) {
                 return;
             }
         } else if (count == 0) { /* client closed socket */
-            printf("client closed.\n");
+            debug_print("client closed.\n");
             finish_transaction(efd, trans);
         } else {
-            printf("%ld bytes written.\n", count);
+            debug_print("%ld bytes written.\n", count);
             trans->write_pos += count;
         }
     }
@@ -361,7 +361,7 @@ void write_n(int efd, transaction_t* trans) {
 }
 
 void write_file(int efd, transaction_t* trans) {
-    printf("write file to socket\n");
+    debug_print("write file to socket\n");
     int rc;
     while (trans->write_pos < trans->filesize) {
         rc = sendfile(trans->fd, trans->read_fd, &trans->write_pos, trans->filesize - trans->write_pos);
@@ -372,7 +372,7 @@ void write_file(int efd, transaction_t* trans) {
             }
             return;
         }
-        printf("send file: %ld bytes sent.\n", rc);
+        debug_print("send file: %d bytes sent.\n", rc);
     }
     /* write done */
     printf("whole file wrote to socket\n");
@@ -380,7 +380,7 @@ void write_file(int efd, transaction_t* trans) {
 }
 
 void read_n(int efd, transaction_t* trans) {
-    printf("read_n %ld\n", trans->read_len);
+    debug_print("read_n %ld\n", trans->read_len);
     ssize_t count = 0;
     while (trans->read_pos < trans->read_len) {
         count = read(trans->fd, trans->read_buf, MIN(trans->read_len, MAXBUF-trans->read_pos));
@@ -392,10 +392,10 @@ void read_n(int efd, transaction_t* trans) {
             return; /* EAGAIN: no more */
         } else if (count == 0) {
             /* client closed socket. */
-            printf("client closed.\n");
+            debug_print("client closed.\n");
             finish_transaction(efd, trans);
         } else {
-            printf("%ld bytes read.\n", count);
+            debug_print("%ld bytes read.\n", count);
             trans->read_pos += count;
         }
     }
@@ -407,7 +407,7 @@ void read_n(int efd, transaction_t* trans) {
  * serve_download - copy a file back to the client
  */
 void serve_download(int efd, transaction_t*trans) {
-    printf("serve download\n");
+    debug_print("serve download\n");
     int fd;
     fd = open(trans->filename, O_RDONLY, 0);
     if (fd < 0) {
@@ -437,7 +437,7 @@ void serve_download(int efd, transaction_t*trans) {
 }
 
 void serve_upload(int efd, transaction_t* trans) {
-    printf("serve upload %s\n", trans->filename);
+    debug_print("serve upload %s\n", trans->filename);
     if (trans->write_fd == INVALID_FD) {
         /*
         * Create new file.
@@ -478,7 +478,7 @@ void serve_upload(int efd, transaction_t* trans) {
         client_error(efd, trans, trans->filename, "500", "Server Internal Error", "Cannot write to the requested file.");
         return;
     }
-    printf("%ld bytes wrote to file.\n", trans->read_pos);
+    debug_print("%ld bytes wrote to file.\n", trans->read_pos);
     trans->saved_pos += trans->read_pos;
     trans->read_pos = 0;
     if (trans->saved_pos < trans->filesize) { /* Read more */
@@ -508,7 +508,7 @@ void get_filetype(char *filename, char *filetype) {
 }
 
 void finish_transaction(int efd, transaction_t* trans) {
-    printf("finish transaction\n");
+    debug_print("finish transaction\n");
 
     int active_fd = INVALID_FD;
 

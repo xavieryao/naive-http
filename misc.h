@@ -30,6 +30,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define MIN(X,Y) X<Y ? X : Y
 #define MAX(X,Y) X>=Y ? X : Y
 
+#define DEBUG
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) fprintf(stderr, fmt, __VA_ARGS__); } while (0)
+
 /* struct aliases */
 typedef struct sockaddr SA;
 typedef struct epoll_event epoll_event_t;
